@@ -1,0 +1,567 @@
+<Layouts.app flash={@flash} active_module="ledger">
+  <section id="ledger-page" class="px-4 py-6 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold tracking-tight text-base-content">Cuenta corriente</h1>
+        <div class="dropdown dropdown-end">
+          <button
+            id="ledger-info-button"
+            type="button"
+            tabindex="0"
+            class="btn btn-ghost btn-xs btn-circle"
+          >
+            <.icon name="hero-information-circle" class="size-5" />
+          </button>
+          <div
+            tabindex="0"
+            class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+          >
+            Registre bancos y movimientos desde tablas de trabajo. Los formularios se abren solo cuando necesita crear o editar datos.
+          </div>
+        </div>
+      </div>
+
+      <div id="ledger-actions-menu" class="flex items-center gap-1">
+        <a
+          id="ledger-currencies-link"
+          href={~p"/currencies"}
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Monedas y tipos de cambio"
+          aria-label="Monedas y tipos de cambio"
+        >
+          <.icon name="hero-currency-dollar" class="size-5" />
+        </a>
+      </div>
+    </div>
+
+    <div
+      id="ledger-tabs"
+      class="mt-6 rounded-box border border-base-300 bg-base-100 shadow-sm"
+      data-active-ledger-tab={@active_ledger_tab}
+    >
+      <div role="tablist" class="tabs tabs-border px-4 pt-3">
+        <button
+          id="ledger-dashboard-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_ledger_tab == "dashboard" && "tab-active"]}
+          data-ledger-tab="dashboard"
+        >
+          Dashboard
+        </button>
+        <button
+          id="ledger-transactions-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_ledger_tab == "transactions" && "tab-active"]}
+          data-ledger-tab="transactions"
+        >
+          Movimientos recientes
+        </button>
+        <button
+          id="ledger-accounts-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_ledger_tab == "accounts" && "tab-active"]}
+          data-ledger-tab="accounts"
+        >
+          Cuentas bancarias
+        </button>
+        <button
+          id="ledger-exchange-differences-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_ledger_tab == "exchange-differences" && "tab-active"]}
+          data-ledger-tab="exchange-differences"
+        >
+          Diferencial cambiario
+        </button>
+      </div>
+
+      <div class="border-t border-base-300 p-4 sm:p-5">
+        <div
+          id="ledger-dashboard-panel"
+          data-ledger-panel="dashboard"
+          hidden={@active_ledger_tab != "dashboard"}
+        >
+          <div class="grid gap-3 md:grid-cols-3">
+            <div class="rounded-box border border-base-300 bg-base-100 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Saldo total</p>
+              <p class="mt-2 text-2xl font-bold">
+                {Sipaex.Ledger.display_amount(
+                  @settings.total_balance_usd,
+                  @settings.currency_settings
+                )}
+              </p>
+            </div>
+
+            <div class="rounded-box border border-base-300 bg-base-100 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Cuentas bancarias</p>
+              <p class="mt-2 text-2xl font-bold">{length(@settings.bank_accounts)}</p>
+            </div>
+
+            <div class="rounded-box border border-base-300 bg-base-100 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Moneda reportes</p>
+              <p class="mt-2 text-2xl font-bold">
+                {@settings.currency_settings.organization.base_currency.code}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-5">
+            <div class="flex items-center justify-between gap-3">
+              <h2 class="text-base font-semibold">Mayor bancos</h2>
+              <span class="text-xs text-base-content/55">Saldos por cuenta</span>
+            </div>
+
+            <div class="mt-3 overflow-x-auto">
+              <table id="ledger-bank-major-table" class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Banco</th>
+                    <th>Saldo cuentas banco</th>
+                    <th>Notas de crédito</th>
+                    <th>Notas de débito</th>
+                    <th>Diferencial cambiario</th>
+                    <th>Saldo ajustado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={row <- @settings.bank_major_rows}>
+                    <td>
+                      <div class="font-semibold">{row.bank_account.name}</div>
+                      <div class="text-xs text-base-content/55">
+                        {row.bank_account.currency.code}
+                      </div>
+                    </td>
+                    <td>
+                      {Sipaex.Ledger.display_native_amount(
+                        row.bank_balance,
+                        row.bank_account.currency
+                      )}
+                    </td>
+                    <td>
+                      {Sipaex.Ledger.display_native_amount(
+                        row.credit_notes,
+                        row.bank_account.currency
+                      )}
+                    </td>
+                    <td>
+                      {Sipaex.Ledger.display_native_amount(
+                        row.debit_notes,
+                        row.bank_account.currency
+                      )}
+                    </td>
+                    <td>
+                      {Sipaex.Ledger.display_native_amount(
+                        row.exchange_difference_result,
+                        row.bank_account.currency
+                      )}
+                    </td>
+                    <td class="font-semibold">
+                      {Sipaex.Ledger.display_native_amount(
+                        Sipaex.Ledger.adjusted_bank_major_balance(row),
+                        row.bank_account.currency
+                      )}
+                    </td>
+                  </tr>
+                  <tr class="hidden only:table-row">
+                    <td colspan="6" class="py-8 text-center text-base-content/55">
+                      No hay cuentas bancarias registradas.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="ledger-transactions-panel"
+          data-ledger-panel="transactions"
+          hidden={@active_ledger_tab != "transactions"}
+        >
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-base font-semibold">Movimientos recientes</h2>
+            <button
+              id="open-ledger-transaction-modal"
+              type="button"
+              class="btn btn-primary btn-sm"
+              data-modal-target="ledger_transaction_modal"
+            >
+              <.icon name="hero-plus" class="size-4" /> Agregar
+            </button>
+          </div>
+
+          <div class="mt-4 overflow-x-auto">
+            <table id="ledger-transactions-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th>Concepto</th>
+                  <th>Monto</th>
+                  <th>USD</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={transaction <- @settings.transactions}>
+                  <td>{transaction.transaction_date}</td>
+                  <td>{Sipaex.Ledger.movement_label(transaction.movement_type)}</td>
+                  <td>
+                    <div class="font-medium">{transaction.concept}</div>
+                    <div class="text-xs text-base-content/55">
+                      {transaction.bank_account.name}
+                    </div>
+                  </td>
+                  <td>
+                    {transaction.currency.symbol} {Decimal.to_string(
+                      Decimal.round(transaction.amount, transaction.currency.decimal_places),
+                      :normal
+                    )}
+                  </td>
+                  <td>
+                    {Decimal.to_string(
+                      Decimal.round(Sipaex.Ledger.signed_amount_usd(transaction), 2),
+                      :normal
+                    )}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          id="ledger-accounts-panel"
+          data-ledger-panel="accounts"
+          hidden={@active_ledger_tab != "accounts"}
+        >
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-base font-semibold">Cuentas bancarias</h2>
+            <button
+              id="open-bank-account-modal"
+              type="button"
+              class="btn btn-primary btn-sm"
+              data-modal-target="ledger_bank_account_modal"
+            >
+              <.icon name="hero-building-library" class="size-4" /> Agregar
+            </button>
+          </div>
+
+          <div class="mt-4 overflow-x-auto">
+            <table id="ledger-bank-accounts-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Banco</th>
+                  <th>Moneda</th>
+                  <th>IBAN</th>
+                  <th>Saldo</th>
+                  <th class="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={bank_account <- @settings.bank_accounts}>
+                  <td>
+                    <div class="font-semibold">{bank_account.name}</div>
+                    <div class="text-xs text-base-content/55">
+                      {bank_account.current_account_number}
+                    </div>
+                  </td>
+                  <td>{bank_account.currency.code}</td>
+                  <td>{bank_account.iban || "Pendiente"}</td>
+                  <td>
+                    {Sipaex.Ledger.display_native_amount(
+                      @settings.bank_account_native_balances[bank_account.id],
+                      bank_account.currency
+                    )}
+                  </td>
+                  <td class="text-right">
+                    <button type="button" class="btn btn-ghost btn-xs" disabled>Editar</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          id="ledger-exchange-differences-panel"
+          data-ledger-panel="exchange-differences"
+          hidden={@active_ledger_tab != "exchange-differences"}
+        >
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-base font-semibold">Diferencial cambiario</h2>
+            <button
+              id="open-exchange-difference-modal"
+              type="button"
+              class="btn btn-primary btn-sm"
+              data-modal-target="ledger_exchange_difference_modal"
+            >
+              <.icon name="hero-arrows-right-left" class="size-4" /> Registrar
+            </button>
+          </div>
+
+          <div class="mt-4 overflow-x-auto">
+            <table id="ledger-exchange-differences-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Cuenta</th>
+                  <th>Monto moneda extranjera</th>
+                  <th>Compra</th>
+                  <th>Venta</th>
+                  <th>Resultado</th>
+                  <th>Concepto</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={exchange_difference <- @settings.exchange_differences}>
+                  <td>{exchange_difference.transaction_date}</td>
+                  <td>
+                    <div class="font-medium">{exchange_difference.bank_account.name}</div>
+                    <div class="text-xs text-base-content/55">
+                      {exchange_difference.currency.code}
+                    </div>
+                  </td>
+                  <td>
+                    {exchange_difference.currency.symbol} {Decimal.to_string(
+                      Decimal.round(
+                        exchange_difference.foreign_amount,
+                        exchange_difference.currency.decimal_places
+                      ),
+                      :normal
+                    )}
+                  </td>
+                  <td>
+                    {Decimal.to_string(
+                      Decimal.round(exchange_difference.purchase_exchange_rate, 4),
+                      :normal
+                    )}
+                  </td>
+                  <td>
+                    {Decimal.to_string(
+                      Decimal.round(exchange_difference.sale_exchange_rate, 4),
+                      :normal
+                    )}
+                  </td>
+                  <td class="font-semibold">
+                    {Sipaex.Ledger.display_native_amount(
+                      exchange_difference.result_amount,
+                      exchange_difference.currency
+                    )}
+                  </td>
+                  <td>
+                    <div>{exchange_difference.concept}</div>
+                    <div :if={exchange_difference.voucher} class="text-xs text-base-content/55">
+                      {exchange_difference.voucher}
+                    </div>
+                  </td>
+                </tr>
+                <tr class="hidden only:table-row">
+                  <td colspan="7" class="py-8 text-center text-base-content/55">
+                    No hay diferenciales cambiarios registrados.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <.modal id="ledger_bank_account_modal" title="Agregar cuenta bancaria">
+      <.form
+        for={@bank_account_form}
+        id="ledger-bank-account-form"
+        action={~p"/ledger/accounts"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <div class="sm:col-span-2">
+          <.input
+            field={@bank_account_form[:name]}
+            label="Banco"
+            placeholder="Banco Nacional"
+            required
+          />
+        </div>
+        <.input field={@bank_account_form[:current_account_number]} label="Cuenta corriente" />
+        <.input field={@bank_account_form[:customer_account_number]} label="Cuenta cliente" />
+        <div class="sm:col-span-2">
+          <.input field={@bank_account_form[:iban]} label="IBAN" placeholder="CR..." />
+        </div>
+        <div class="sm:col-span-2">
+          <.input
+            field={@bank_account_form[:currency_id]}
+            type="select"
+            label="Moneda de la cuenta"
+            options={
+              Enum.map(
+                @settings.currency_settings.organization_currencies,
+                fn organization_currency ->
+                  {"#{organization_currency.currency.code} - #{organization_currency.currency.name}",
+                   organization_currency.currency_id}
+                end
+              )
+            }
+          />
+        </div>
+
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="ledger-bank-account-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+
+    <.modal id="ledger_transaction_modal" title="Agregar movimiento">
+      <.form
+        for={@transaction_form}
+        id="ledger-transaction-form"
+        action={~p"/ledger/transactions"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <div class="sm:col-span-2">
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1">Cuenta bancaria</span>
+              <select
+                id="ledger_transaction_bank_account_id"
+                name={@transaction_form[:bank_account_id].name}
+                class="w-full select"
+                required
+              >
+                <option value="">Seleccione una cuenta</option>
+                <option
+                  :for={bank_account <- @settings.bank_accounts}
+                  value={bank_account.id}
+                  selected={@transaction_form[:bank_account_id].value == bank_account.id}
+                  data-exchange-rate={
+                    bank_account
+                    |> Sipaex.Ledger.default_exchange_rate_for_bank_account()
+                    |> then(&if(&1, do: Decimal.to_string(&1, :normal), else: ""))
+                  }
+                >
+                  {bank_account.name} · {bank_account.currency.code}
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <.input
+          field={@transaction_form[:movement_type]}
+          type="select"
+          label="Tipo"
+          options={Sipaex.Ledger.movement_type_options()}
+        />
+        <.input field={@transaction_form[:transaction_date]} type="date" label="Fecha" required />
+        <.input
+          field={@transaction_form[:amount]}
+          type="number"
+          label="Monto"
+          min="0.01"
+          step="0.01"
+          required
+        />
+        <.input
+          field={@transaction_form[:exchange_rate]}
+          type="number"
+          label="Tipo de cambio"
+          min="0.00000001"
+          step="0.00000001"
+        />
+        <.input field={@transaction_form[:voucher]} label="Comprobante" />
+        <div class="sm:col-span-2">
+          <.input field={@transaction_form[:concept]} label="Concepto" required />
+        </div>
+
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="ledger-transaction-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+
+    <.modal id="ledger_exchange_difference_modal" title="Registrar diferencial cambiario">
+      <.form
+        for={@exchange_difference_form}
+        id="ledger-exchange-difference-form"
+        action={~p"/ledger/exchange-differences"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <div class="sm:col-span-2">
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1">Cuenta bancaria</span>
+              <select
+                id="exchange_difference_bank_account_id"
+                name={@exchange_difference_form[:bank_account_id].name}
+                class="w-full select"
+                required
+              >
+                <option value="">Seleccione una cuenta</option>
+                <option
+                  :for={bank_account <- @settings.bank_accounts}
+                  value={bank_account.id}
+                  selected={@exchange_difference_form[:bank_account_id].value == bank_account.id}
+                  data-exchange-rate={
+                    bank_account
+                    |> Sipaex.Ledger.default_exchange_rate_for_bank_account()
+                    |> then(&if(&1, do: Decimal.to_string(&1, :normal), else: ""))
+                  }
+                >
+                  {bank_account.name} · {bank_account.currency.code}
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <.input
+          field={@exchange_difference_form[:transaction_date]}
+          type="date"
+          label="Fecha"
+          required
+        />
+        <.input
+          field={@exchange_difference_form[:foreign_amount]}
+          type="number"
+          label="Monto moneda extranjera"
+          min="0.01"
+          step="0.01"
+          required
+        />
+        <.input
+          field={@exchange_difference_form[:purchase_exchange_rate]}
+          type="number"
+          label="Tipo cambio compra"
+          min="0.00000001"
+          step="0.00000001"
+          required
+        />
+        <.input
+          field={@exchange_difference_form[:sale_exchange_rate]}
+          type="number"
+          label="Tipo cambio venta"
+          min="0.00000001"
+          step="0.00000001"
+          required
+        />
+        <.input field={@exchange_difference_form[:voucher]} label="Comprobante" />
+        <div class="sm:col-span-2">
+          <.input field={@exchange_difference_form[:concept]} label="Concepto" required />
+        </div>
+
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="ledger-exchange-difference-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+  </section>
+</Layouts.app>

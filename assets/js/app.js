@@ -46,6 +46,83 @@ liveSocket.connect()
 // >> liveSocket.disableLatencySim()
 window.liveSocket = liveSocket
 
+const setupLedgerExchangeRates = () => {
+  const accountSelect = document.getElementById("ledger_transaction_bank_account_id")
+  const exchangeRateInput = document.getElementById("ledger_transaction_exchange_rate")
+
+  if (!accountSelect || !exchangeRateInput) return
+
+  const syncExchangeRate = () => {
+    const selectedOption = accountSelect.selectedOptions[0]
+    const exchangeRate = selectedOption?.dataset.exchangeRate
+
+    if (exchangeRate !== undefined) {
+      exchangeRateInput.value = exchangeRate
+    }
+  }
+
+  accountSelect.addEventListener("change", syncExchangeRate)
+  syncExchangeRate()
+}
+
+const setupLedgerExchangeDifferenceRates = () => {
+  const accountSelect = document.getElementById("exchange_difference_bank_account_id")
+  const purchaseRateInput = document.getElementById("exchange_difference_purchase_exchange_rate")
+
+  if (!accountSelect || !purchaseRateInput) return
+
+  const syncPurchaseRate = () => {
+    const selectedOption = accountSelect.selectedOptions[0]
+    const exchangeRate = selectedOption?.dataset.exchangeRate
+
+    if (exchangeRate !== undefined) {
+      purchaseRateInput.value = exchangeRate
+    }
+  }
+
+  accountSelect.addEventListener("change", syncPurchaseRate)
+  syncPurchaseRate()
+}
+
+const setupLedgerTabs = () => {
+  const tabContainer = document.getElementById("ledger-tabs")
+  const tabs = document.querySelectorAll("[data-ledger-tab]")
+  const panels = document.querySelectorAll("[data-ledger-panel]")
+
+  if (!tabContainer || !tabs.length || !panels.length) return
+
+  const activate = (name) => {
+    tabs.forEach((tab) => {
+      tab.classList.toggle("tab-active", tab.dataset.ledgerTab === name)
+    })
+
+    panels.forEach((panel) => {
+      panel.hidden = panel.dataset.ledgerPanel !== name
+    })
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => activate(tab.dataset.ledgerTab))
+  })
+
+  activate(tabContainer.dataset.activeLedgerTab || "dashboard")
+}
+
+const setupModalOpeners = () => {
+  document.querySelectorAll("[data-modal-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.getElementById(button.dataset.modalTarget)?.showModal()
+    })
+  })
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  setupLedgerExchangeRates()
+  setupLedgerExchangeDifferenceRates()
+  setupLedgerTabs()
+  setupModalOpeners()
+})
+
 // The lines below enable quality of life phoenix_live_reload
 // development features:
 //
@@ -80,4 +157,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-

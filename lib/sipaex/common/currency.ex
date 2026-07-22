@@ -19,6 +19,9 @@ defmodule Sipaex.Common.Currency do
     currency
     |> cast(attrs, [:code, :name, :symbol, :decimal_places, :activated_at])
     |> validate_required([:code, :name, :symbol, :decimal_places])
+    |> update_change(:code, &String.upcase/1)
+    |> validate_format(:code, ~r/^[A-Z]{3}$/)
+    |> validate_number(:decimal_places, greater_than_or_equal_to: 0, less_than_or_equal_to: 8)
     |> unique_constraint(:code)
   end
 end

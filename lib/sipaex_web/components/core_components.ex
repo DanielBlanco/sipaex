@@ -419,6 +419,36 @@ defmodule SipaexWeb.CoreComponents do
     """
   end
 
+  @doc """
+  Renders a native dialog modal.
+  """
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  slot :inner_block, required: true
+
+  def modal(assigns) do
+    ~H"""
+    <dialog id={@id} class="modal">
+      <div class="modal-box max-w-2xl rounded-box border border-base-300 p-0 shadow-xl">
+        <div class="flex items-center justify-between border-b border-base-300 px-6 py-4">
+          <h2 class="text-lg font-semibold">{@title}</h2>
+          <form method="dialog">
+            <button class="btn btn-ghost btn-sm btn-circle" aria-label="Cerrar">
+              <.icon name="hero-x-mark" class="size-5" />
+            </button>
+          </form>
+        </div>
+        <div class="px-6 py-5">
+          {render_slot(@inner_block)}
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+      </form>
+    </dialog>
+    """
+  end
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do

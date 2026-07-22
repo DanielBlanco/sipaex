@@ -31,29 +31,39 @@ defmodule SipaexWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
+  attr :active_module, :string, default: "dashboard", doc: "the active top navigation module"
+  attr :show_navigation, :boolean, default: true, doc: "whether to show the app top navigation"
+
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="navbar border-b border-base-300 bg-base-100/85 px-4 backdrop-blur sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex w-fit items-center gap-3">
-          <span class="flex size-10 items-center justify-center rounded-lg bg-primary text-sm font-black text-primary-content shadow-sm">
-            S
-          </span>
-          <span class="leading-tight">
-            <span class="block text-sm font-bold tracking-wide text-base-content">SIPAE</span>
-            <span class="block text-xs text-base-content/60">Gestión empresarial</span>
-          </span>
-        </a>
+    <header class="sticky top-0 z-40 border-b border-base-300 bg-base-100/90 backdrop-blur">
+      <div class="navbar px-4 sm:px-6 lg:px-8">
+        <div class="flex-1">
+          <a
+            href={if(@show_navigation, do: ~p"/dashboard", else: ~p"/")}
+            class="flex w-fit items-center gap-3"
+          >
+            <span class="flex size-10 items-center justify-center rounded-lg bg-primary text-sm font-black text-primary-content shadow-sm">
+              S
+            </span>
+            <span class="leading-tight">
+              <span class="block text-sm font-bold tracking-wide text-base-content">SIPAE</span>
+              <span class="block text-xs text-base-content/60">Gestión empresarial</span>
+            </span>
+          </a>
+        </div>
+        <div class="flex-none">
+          <ul class="flex items-center gap-2 px-1">
+            <li>
+              <.theme_toggle />
+            </li>
+          </ul>
+        </div>
       </div>
-      <div class="flex-none">
-        <ul class="flex items-center gap-2 px-1">
-          <li>
-            <.theme_toggle />
-          </li>
-        </ul>
-      </div>
+
+      <.top_navigation :if={@show_navigation} active_module={@active_module} />
     </header>
 
     <main class="min-h-[calc(100vh-4rem)] bg-base-200/60">
@@ -63,6 +73,172 @@ defmodule SipaexWeb.Layouts do
     </main>
 
     <.flash_group flash={@flash} />
+    """
+  end
+
+  attr :active_module, :string, required: true
+
+  def top_navigation(assigns) do
+    ~H"""
+    <nav
+      id="app-topnav"
+      class="relative overflow-visible border-t border-base-300 px-4 sm:px-6 lg:px-8"
+    >
+      <div class="flex flex-wrap gap-1 overflow-visible py-2">
+        <.nav_link
+          title="Panel"
+          href={~p"/dashboard"}
+          icon="hero-squares-2x2"
+          active={@active_module in ["", "dashboard"]}
+        />
+        <.nav_dropdown
+          title="Ventas y compras"
+          icon="hero-shopping-cart"
+          active={@active_module in ["purchases", "sales"]}
+        >
+          <.nav_menu_link title="Compras" href="/purchases?l=1" icon="hero-shopping-bag" />
+          <.nav_menu_link title="Ventas" href="/sales?l=1" icon="hero-shopping-cart" />
+        </.nav_dropdown>
+        <.nav_dropdown
+          title="Gestión financiera"
+          icon="hero-wallet"
+          active={
+            @active_module in ["currencies", "ledger", "bank", "dividends", "expenses", "taxes"]
+          }
+        >
+          <.nav_menu_link title="Monedas" href="/currencies?l=1" icon="hero-currency-dollar" />
+          <.nav_menu_link title="Cuenta corriente" href="/ledger?l=1" icon="hero-credit-card" />
+          <.nav_menu_link title="Banco" href="/bank?l=1" icon="hero-building-library" />
+          <.nav_menu_link
+            title="Dividendos"
+            href="/buy-module?module=Dividendos&l=1"
+            icon="hero-banknotes"
+          />
+          <.nav_menu_link
+            title="Gastos"
+            href="/buy-module?module=Gastos&l=1"
+            icon="hero-receipt-percent"
+          />
+          <.nav_menu_link title="Impuestos" href="/taxes?l=1" icon="hero-receipt-refund" />
+        </.nav_dropdown>
+        <.nav_dropdown
+          title="Activos e inventario"
+          icon="hero-cube"
+          active={@active_module in ["fixed_assets", "inventory", "costs"]}
+        >
+          <.nav_menu_link
+            title="Activos fijos"
+            href="/fixed-assets?l=1"
+            icon="hero-building-storefront"
+          />
+          <.nav_menu_link title="Inventario" href="/inventory?l=1" icon="hero-cube-transparent" />
+          <.nav_menu_link title="Costos" href="/costs?l=1" icon="hero-chart-bar" />
+        </.nav_dropdown>
+        <.nav_dropdown
+          title="Recursos humanos"
+          icon="hero-users"
+          active={@active_module in ["hr", "employees", "payroll"]}
+        >
+          <.nav_menu_link title="Personal" href="/hr/employees?l=1" icon="hero-user" />
+          <.nav_menu_link title="Planilla" href="/hr/payroll?l=1" icon="hero-document-text" />
+        </.nav_dropdown>
+        <.nav_dropdown
+          title="Contabilidad y reportes"
+          icon="hero-document-chart-bar"
+          active={
+            @active_module in [
+              "income_statement",
+              "retained_earnings",
+              "statement_of_position",
+              "closing_adjustment"
+            ]
+          }
+        >
+          <.nav_menu_link
+            title="Estado de resultados"
+            href="/buy-module?module=Estado%20de%20Resultados&l=1"
+            icon="hero-chart-pie"
+          />
+          <.nav_menu_link
+            title="Estado de utilidades"
+            href="/buy-module?module=Estado%20de%20Utilidades&l=1"
+            icon="hero-presentation-chart-line"
+          />
+          <.nav_menu_link
+            title="Estado de situación"
+            href="/buy-module?module=Estado%20de%20Situacion&l=1"
+            icon="hero-presentation-chart-bar"
+          />
+          <.nav_menu_link
+            title="Ajuste de cierre"
+            href="/buy-module?module=Ajuste%20de%20Cierre&l=1"
+            icon="hero-adjustments-horizontal"
+          />
+        </.nav_dropdown>
+      </div>
+    </nav>
+    """
+  end
+
+  attr :title, :string, required: true
+  attr :href, :string, required: true
+  attr :icon, :string, required: true
+  attr :active, :boolean, default: false
+
+  def nav_link(assigns) do
+    ~H"""
+    <a
+      href={@href}
+      class={[
+        "btn btn-sm shrink-0 gap-2 border-base-300 font-medium",
+        @active && "btn-primary border-primary",
+        !@active && "btn-ghost hover:bg-base-200"
+      ]}
+    >
+      <.icon name={@icon} class="size-4" /> {@title}
+    </a>
+    """
+  end
+
+  attr :title, :string, required: true
+  attr :icon, :string, required: true
+  attr :active, :boolean, default: false
+  slot :inner_block, required: true
+
+  def nav_dropdown(assigns) do
+    ~H"""
+    <div class="group relative shrink-0">
+      <button
+        type="button"
+        class={[
+          "btn btn-sm shrink-0 gap-2 border-base-300 font-medium",
+          @active && "btn-primary border-primary",
+          !@active && "btn-ghost hover:bg-base-200"
+        ]}
+      >
+        <.icon name={@icon} class="size-4" /> {@title}
+        <.icon name="hero-chevron-down" class="size-3 opacity-60" />
+      </button>
+      <div class="invisible absolute left-0 top-full z-[80] min-w-64 pt-2 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+        <ul class="menu w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
+          {render_slot(@inner_block)}
+        </ul>
+      </div>
+    </div>
+    """
+  end
+
+  attr :title, :string, required: true
+  attr :href, :string, required: true
+  attr :icon, :string, required: true
+
+  def nav_menu_link(assigns) do
+    ~H"""
+    <li>
+      <a href={@href} class="gap-3">
+        <.icon name={@icon} class="size-4 opacity-70" /> {@title}
+      </a>
+    </li>
     """
   end
 

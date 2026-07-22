@@ -1,0 +1,183 @@
+<Layouts.app flash={@flash} active_module="currencies">
+  <section id="currencies-page" class="px-4 py-8 sm:px-6 lg:px-8">
+    <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p class="text-sm font-semibold uppercase tracking-wide text-primary">Configuración</p>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-base-content sm:text-4xl">
+          Monedas y tipos de cambio
+        </h1>
+        <p class="mt-3 max-w-3xl text-sm leading-6 text-base-content/65">
+          SIPAE guarda los montos operativos en USD. La moneda predeterminada define cómo se convierten y muestran los reportes de gestión.
+        </p>
+      </div>
+
+      <div class="rounded-box border border-base-300 bg-base-100 px-4 py-3 text-sm shadow-sm">
+        <span class="text-base-content/55">Moneda de almacenamiento:</span>
+        <span class="ml-2 font-semibold">{@settings.storage_currency.code}</span>
+      </div>
+    </div>
+
+    <div class="mt-8 grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+      <div class="space-y-6">
+        <div class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
+          <h2 class="text-lg font-semibold">Moneda predeterminada</h2>
+          <p class="mt-2 text-sm leading-6 text-base-content/60">
+            Esta moneda se usa para reportes y vistas gerenciales. Las compras o ventas pueden usar otras monedas si existe un tipo de cambio desde USD.
+          </p>
+
+          <.form
+            for={@default_form}
+            id="default-currency-form"
+            action={~p"/currencies/default"}
+            method="post"
+            class="mt-5 space-y-4"
+          >
+            <.input
+              field={@default_form[:currency_id]}
+              type="select"
+              label="Moneda para reportes"
+              options={
+                Enum.map(@settings.organization_currencies, fn organization_currency ->
+                  {"#{organization_currency.currency.code} - #{organization_currency.currency.name}",
+                   organization_currency.currency_id}
+                end)
+              }
+            />
+
+            <button id="set-default-currency-submit" type="submit" class="btn btn-primary">
+              <.icon name="hero-check" class="size-4" /> Guardar predeterminada
+            </button>
+          </.form>
+        </div>
+
+        <div class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
+          <h2 class="text-lg font-semibold">Agregar moneda</h2>
+          <p class="mt-2 text-sm leading-6 text-base-content/60">
+            Use códigos ISO de tres letras. Para monedas distintas a USD, registre cuántas unidades de esa moneda equivalen a 1 USD.
+          </p>
+
+          <.form
+            for={@currency_form}
+            id="currency-form"
+            action={~p"/currencies"}
+            method="post"
+            class="mt-5 grid gap-4 sm:grid-cols-2"
+          >
+            <.input
+              field={@currency_form[:code]}
+              label="Código"
+              placeholder="CRC"
+              maxlength="3"
+              required
+            />
+            <.input field={@currency_form[:symbol]} label="Símbolo" placeholder="₡" required />
+            <div class="sm:col-span-2">
+              <.input
+                field={@currency_form[:name]}
+                label="Nombre"
+                placeholder="Costa Rican Colón"
+                required
+              />
+            </div>
+            <.input
+              field={@currency_form[:decimal_places]}
+              type="number"
+              label="Decimales"
+              min="0"
+              max="8"
+              required
+            />
+            <.input
+              field={@currency_form[:rate]}
+              type="number"
+              label="Tipo USD"
+              min="0.00000001"
+              step="0.00000001"
+              placeholder="491.92"
+            />
+
+            <div class="sm:col-span-2">
+              <button id="currency-submit" type="submit" class="btn btn-primary">
+                <.icon name="hero-plus" class="size-4" /> Agregar moneda
+              </button>
+            </div>
+          </.form>
+        </div>
+      </div>
+
+      <div class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-lg font-semibold">Monedas activas</h2>
+            <p class="mt-1 text-sm text-base-content/60">
+              Pares de conversión desde USD para mostrar datos en la moneda predeterminada.
+            </p>
+          </div>
+          <span class="badge badge-primary badge-soft">
+            {@settings.organization_currencies |> length()} activas
+          </span>
+        </div>
+
+        <div class="mt-5 overflow-x-auto">
+          <table id="currencies-table" class="table">
+            <thead>
+              <tr>
+                <th>Moneda</th>
+                <th>Par</th>
+                <th>Tipo</th>
+                <th>Uso</th>
+                <th class="text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={organization_currency <- @settings.organization_currencies}>
+                <td>
+                  <div class="font-semibold">{organization_currency.currency.code}</div>
+                  <div class="text-sm text-base-content/55">
+                    {organization_currency.currency.symbol} · {organization_currency.currency.name}
+                  </div>
+                </td>
+                <td>USD / {organization_currency.currency.code}</td>
+                <td>
+                  <%= if organization_currency.currency.code == "USD" do %>
+                    1.00
+                  <% else %>
+                    <% rate = @settings.latest_rates[organization_currency.currency_id] %>
+                    {if rate, do: Decimal.to_string(rate.rate, :normal), else: "Pendiente"}
+                  <% end %>
+                </td>
+                <td>
+                  <span :if={organization_currency.base} class="badge badge-primary">
+                    Predeterminada
+                  </span>
+                  <span :if={!organization_currency.base} class="badge badge-ghost">
+                    Operativa
+                  </span>
+                </td>
+                <td class="text-right">
+                  <button
+                    :if={organization_currency.currency.code == "USD"}
+                    type="button"
+                    class="btn btn-ghost btn-xs"
+                    disabled
+                  >
+                    Obligatoria
+                  </button>
+                  <.link
+                    :if={organization_currency.currency.code != "USD"}
+                    id={"remove-currency-#{organization_currency.currency.code}"}
+                    href={~p"/currencies/#{organization_currency.currency_id}"}
+                    method="delete"
+                    class="btn btn-error btn-soft btn-xs"
+                  >
+                    <.icon name="hero-trash" class="size-3.5" /> Remover
+                  </.link>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layouts.app>

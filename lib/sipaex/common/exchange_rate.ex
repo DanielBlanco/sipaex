@@ -21,6 +21,7 @@ defmodule Sipaex.Common.ExchangeRate do
     exchange_rate
     |> cast(attrs, [:base_currency_id, :quote_currency_id, :rate, :as_of, :scope, :source])
     |> validate_required([:base_currency_id, :quote_currency_id, :rate, :as_of, :scope, :source])
+    |> validate_number(:rate, greater_than: 0)
     |> unique_constraint([:base_currency_id, :quote_currency_id, :as_of, :scope])
   end
 end

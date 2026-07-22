@@ -1,0 +1,217 @@
+<Layouts.app flash={@flash} active_module="bank">
+  <section id="bank-page" class="px-4 py-6 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold tracking-tight text-base-content">Banco</h1>
+        <div class="dropdown dropdown-end">
+          <button
+            id="bank-info-button"
+            type="button"
+            tabindex="0"
+            class="btn btn-ghost btn-xs btn-circle"
+          >
+            <.icon name="hero-information-circle" class="size-5" />
+          </button>
+          <div
+            tabindex="0"
+            class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+          >
+            Resumen consolidado de ingresos y egresos bancarios. Las filas de módulos pendientes se muestran en cero hasta implementar sus flujos.
+          </div>
+        </div>
+      </div>
+
+      <a
+        id="bank-ledger-link"
+        href={~p"/ledger"}
+        class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+        data-tip="Cuenta corriente"
+        aria-label="Cuenta corriente"
+      >
+        <.icon name="hero-credit-card" class="size-5" />
+      </a>
+    </div>
+
+    <div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div class="rounded-box border border-base-300 bg-base-100 shadow-sm">
+        <div class="grid gap-3 border-b border-base-300 p-4 sm:grid-cols-3">
+          <div>
+            <p class="text-xs font-medium uppercase text-base-content/55">Ingresos</p>
+            <p class="mt-1 text-xl font-bold text-success">
+              {Sipaex.Bank.display_amount(@summary.income_total, @summary)}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-base-content/55">Egresos</p>
+            <p class="mt-1 text-xl font-bold text-error">
+              {Sipaex.Bank.display_amount(@summary.expense_total, @summary)}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-base-content/55">Saldo total</p>
+            <p class="mt-1 text-xl font-bold">
+              {Sipaex.Bank.display_amount(@summary.balance, @summary)}
+            </p>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto p-4">
+          <table id="bank-summary-table" class="table table-sm">
+            <thead>
+              <tr>
+                <th>Concepto</th>
+                <th class="text-right">Ingresos</th>
+                <th class="text-right">Egresos</th>
+                <th class="text-right">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={row <- @summary.rows}>
+                <td class="min-w-96">{row.concept}</td>
+                <td class="text-right">{Sipaex.Bank.display_amount(row.income, @summary)}</td>
+                <td class="text-right">{Sipaex.Bank.display_amount(row.expense, @summary)}</td>
+                <td class="text-right font-medium">
+                  {Sipaex.Bank.display_amount(row.balance, @summary)}
+                </td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th>Saldo total</th>
+                <th class="text-right">
+                  {Sipaex.Bank.display_amount(@summary.income_total, @summary)}
+                </th>
+                <th class="text-right">
+                  {Sipaex.Bank.display_amount(@summary.expense_total, @summary)}
+                </th>
+                <th class="text-right">
+                  {Sipaex.Bank.display_amount(@summary.balance, @summary)}
+                </th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <aside
+        id="petty-cash-widget"
+        class="h-fit rounded-box border border-base-300 bg-base-100 p-4 shadow-sm"
+      >
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-base font-semibold">Caja chica</h2>
+          <button
+            id="petty-cash-add-button"
+            type="button"
+            class="btn btn-primary btn-xs"
+            data-modal-target="petty_cash_modal"
+          >
+            <.icon name="hero-plus" class="size-4" /> Agregar
+          </button>
+        </div>
+
+        <div class="mt-4 grid gap-2">
+          <div class="flex items-center justify-between rounded-box bg-base-200 px-3 py-2">
+            <span class="text-sm text-base-content/65">Saldo</span>
+            <span class="font-semibold">
+              {Sipaex.Bank.display_amount(@summary.petty_cash.balance, @summary)}
+            </span>
+          </div>
+          <div class="flex items-center justify-between rounded-box bg-base-200 px-3 py-2">
+            <span class="text-sm text-base-content/65">Depósitos</span>
+            <span class="font-semibold text-success">
+              {Sipaex.Bank.display_amount(@summary.petty_cash.deposits, @summary)}
+            </span>
+          </div>
+          <div class="flex items-center justify-between rounded-box bg-base-200 px-3 py-2">
+            <span class="text-sm text-base-content/65">Retiros</span>
+            <span class="font-semibold text-error">
+              {Sipaex.Bank.display_amount(@summary.petty_cash.withdrawals, @summary)}
+            </span>
+          </div>
+        </div>
+
+        <div class="mt-4 border-t border-base-300 pt-3">
+          <h3 class="text-xs font-semibold uppercase text-base-content/55">Entradas recientes</h3>
+          <div id="petty-cash-transactions" class="mt-2 grid gap-1">
+            <div
+              :for={transaction <- @summary.petty_cash_transactions}
+              class="flex items-center justify-between gap-2 border-b border-base-300 py-2 last:border-b-0"
+            >
+              <div class="min-w-0">
+                <div class="truncate text-sm font-medium">{transaction.details}</div>
+                <div class="text-xs text-base-content/55">
+                  {Sipaex.Bank.petty_cash_type_label(transaction.transaction_type)}
+                </div>
+              </div>
+              <div class="flex shrink-0 items-center gap-1">
+                <span class={[
+                  "text-sm font-semibold",
+                  Sipaex.Bank.petty_cash_deposit?(transaction) && "text-success",
+                  !Sipaex.Bank.petty_cash_deposit?(transaction) && "text-error"
+                ]}>
+                  {if(Sipaex.Bank.petty_cash_deposit?(transaction), do: "+", else: "-")}
+                  {Sipaex.Bank.display_petty_cash_amount(transaction)}
+                </span>
+                <.form
+                  for={Phoenix.Component.to_form(%{})}
+                  id={"delete-petty-cash-#{transaction.id}"}
+                  action={~p"/petty-cash/#{transaction.id}"}
+                  method="delete"
+                >
+                  <button
+                    type="submit"
+                    class="btn btn-ghost btn-xs btn-square text-error"
+                    aria-label="Eliminar entrada"
+                  >
+                    <.icon name="hero-x-mark" class="size-4" />
+                  </button>
+                </.form>
+              </div>
+            </div>
+            <div class="hidden only:block py-4 text-center text-sm text-base-content/55">
+              No hay transacciones registradas.
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <.modal id="petty_cash_modal" title="Agregar caja chica">
+      <.form
+        for={@petty_cash_form}
+        id="petty-cash-form"
+        action={~p"/petty-cash"}
+        method="post"
+        class="grid gap-4"
+      >
+        <.input field={@petty_cash_form[:details]} label="Descripción" required />
+        <.input
+          field={@petty_cash_form[:amount]}
+          type="number"
+          label="Cantidad"
+          min="0.01"
+          step="0.01"
+          required
+        />
+        <.input
+          field={@petty_cash_form[:currency_id]}
+          type="select"
+          label="Moneda"
+          options={Enum.map(@summary.petty_cash_currencies, &{"#{&1.code} - #{&1.name}", &1.id})}
+        />
+        <.input
+          field={@petty_cash_form[:transaction_type]}
+          type="select"
+          label="Tipo"
+          options={Sipaex.Bank.petty_cash_type_options()}
+        />
+
+        <div class="flex justify-end">
+          <button id="petty-cash-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+  </section>
+</Layouts.app>

@@ -19,6 +19,17 @@ defmodule SipaexWeb.Router do
 
     get "/", PageController, :home
     get "/dashboard", PageController, :dashboard
+    get "/bank", PageController, :bank
+    post "/petty-cash", PageController, :create_petty_cash
+    delete "/petty-cash/:id", PageController, :delete_petty_cash
+    get "/ledger", PageController, :ledger
+    post "/ledger/accounts", PageController, :create_ledger_account
+    post "/ledger/transactions", PageController, :create_ledger_transaction
+    post "/ledger/exchange-differences", PageController, :create_ledger_exchange_difference
+    get "/currencies", PageController, :currencies
+    post "/currencies", PageController, :create_currency
+    post "/currencies/default", PageController, :set_default_currency
+    delete "/currencies/:currency_id", PageController, :delete_currency
   end
 
   # Other scopes may use custom stacks.

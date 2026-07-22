@@ -1,4 +1,4 @@
-<Layouts.app flash={@flash}>
+<Layouts.app flash={@flash} active_module="dashboard">
   <section id="app-dashboard" class="px-4 py-8 sm:px-6 lg:px-8">
     <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
       <div>
@@ -30,7 +30,16 @@
           </span>
         </div>
         <p class="mt-4 text-3xl font-bold">{@dashboard.currencies_count}</p>
-        <p class="mt-1 text-sm text-base-content/55">Catálogo común activo</p>
+        <div class="mt-1 flex items-center justify-between gap-3">
+          <p class="text-sm text-base-content/55">Catálogo común activo</p>
+          <a
+            id="dashboard-currencies-link"
+            href={~p"/currencies"}
+            class="link link-primary text-sm font-medium"
+          >
+            Gestionar
+          </a>
+        </div>
       </div>
 
       <div class="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm">
@@ -131,7 +140,12 @@
       </div>
 
       <div class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
-        <h2 class="text-lg font-semibold">Datos base</h2>
+        <div class="flex items-center justify-between gap-4">
+          <h2 class="text-lg font-semibold">Datos base</h2>
+          <a href={~p"/currencies"} class="btn btn-sm btn-primary">
+            <.icon name="hero-currency-dollar" class="size-4" /> Monedas
+          </a>
+        </div>
         <div :if={@dashboard.organization} class="mt-4 rounded-box bg-base-200 p-4">
           <p class="text-sm text-base-content/55">Organización</p>
           <p class="mt-1 font-semibold">{@dashboard.organization.legal_name}</p>
