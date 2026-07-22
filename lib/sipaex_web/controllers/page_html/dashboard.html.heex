@@ -1,0 +1,165 @@
+<Layouts.app flash={@flash}>
+  <section id="app-dashboard" class="px-4 py-8 sm:px-6 lg:px-8">
+    <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p class="text-sm font-semibold uppercase tracking-wide text-primary">Panel principal</p>
+        <h1 class="mt-2 text-3xl font-bold tracking-tight text-base-content sm:text-4xl">
+          {if @dashboard.organization, do: @dashboard.organization.name, else: "SIPAE"}
+        </h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-base-content/65">
+          Vista inicial para validar la operación, datos base y módulos principales antes de construir los flujos de negocio.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        <a id="dashboard-home-link" href={~p"/"} class="btn btn-ghost">
+          <.icon name="hero-arrow-left" class="size-4" /> Inicio
+        </a>
+        <button id="dashboard-primary-action" type="button" class="btn btn-primary">
+          <.icon name="hero-plus" class="size-4" /> Nuevo registro
+        </button>
+      </div>
+    </div>
+
+    <div class="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-4">
+          <p class="text-sm font-medium text-base-content/60">Monedas</p>
+          <span class="rounded-lg bg-primary/10 p-2 text-primary">
+            <.icon name="hero-banknotes" class="size-5" />
+          </span>
+        </div>
+        <p class="mt-4 text-3xl font-bold">{@dashboard.currencies_count}</p>
+        <p class="mt-1 text-sm text-base-content/55">Catálogo común activo</p>
+      </div>
+
+      <div class="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-4">
+          <p class="text-sm font-medium text-base-content/60">Monedas de organización</p>
+          <span class="rounded-lg bg-success/10 p-2 text-success">
+            <.icon name="hero-building-office-2" class="size-5" />
+          </span>
+        </div>
+        <p class="mt-4 text-3xl font-bold">{@dashboard.organization_currencies_count}</p>
+        <p class="mt-1 text-sm text-base-content/55">Incluye moneda base</p>
+      </div>
+
+      <div class="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-4">
+          <p class="text-sm font-medium text-base-content/60">Tipos de cambio</p>
+          <span class="rounded-lg bg-info/10 p-2 text-info">
+            <.icon name="hero-arrow-path-rounded-square" class="size-5" />
+          </span>
+        </div>
+        <p class="mt-4 text-3xl font-bold">{@dashboard.exchange_rates_count}</p>
+        <p class="mt-1 text-sm text-base-content/55">Referencia global USD</p>
+      </div>
+
+      <div class="rounded-box border border-base-300 bg-base-100 p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-4">
+          <p class="text-sm font-medium text-base-content/60">Usuarios</p>
+          <span class="rounded-lg bg-warning/10 p-2 text-warning">
+            <.icon name="hero-users" class="size-5" />
+          </span>
+        </div>
+        <p class="mt-4 text-3xl font-bold">{@dashboard.users_count}</p>
+        <p class="mt-1 text-sm text-base-content/55">Accesos iniciales</p>
+      </div>
+    </div>
+
+    <div class="mt-8 grid gap-6 xl:grid-cols-[1fr_0.78fr]">
+      <div class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h2 class="text-lg font-semibold">Módulos listos para construir</h2>
+            <p class="mt-1 text-sm text-base-content/60">
+              Orden sugerido para convertir el spike en producto.
+            </p>
+          </div>
+          <span class="badge badge-primary badge-soft">HR primero</span>
+        </div>
+
+        <div class="mt-6 grid gap-3 md:grid-cols-2">
+          <div class="rounded-box border border-base-300 p-4 transition hover:border-primary/40 hover:bg-base-200/70">
+            <div class="flex items-center gap-3">
+              <span class="rounded-lg bg-primary/10 p-2 text-primary">
+                <.icon name="hero-identification" class="size-5" />
+              </span>
+              <h3 class="font-semibold">Recursos Humanos</h3>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-base-content/60">
+              Funcionarios, salarios, períodos y líneas de planilla.
+            </p>
+          </div>
+
+          <div class="rounded-box border border-base-300 p-4 transition hover:border-primary/40 hover:bg-base-200/70">
+            <div class="flex items-center gap-3">
+              <span class="rounded-lg bg-success/10 p-2 text-success">
+                <.icon name="hero-archive-box" class="size-5" />
+              </span>
+              <h3 class="font-semibold">Inventario</h3>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-base-content/60">
+              Entradas desde compras y ajustes controlados.
+            </p>
+          </div>
+
+          <div class="rounded-box border border-base-300 p-4 transition hover:border-primary/40 hover:bg-base-200/70">
+            <div class="flex items-center gap-3">
+              <span class="rounded-lg bg-info/10 p-2 text-info">
+                <.icon name="hero-shopping-cart" class="size-5" />
+              </span>
+              <h3 class="font-semibold">Compras</h3>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-base-content/60">
+              Hechos fuente para recepción, costos e impuestos.
+            </p>
+          </div>
+
+          <div class="rounded-box border border-base-300 p-4 transition hover:border-primary/40 hover:bg-base-200/70">
+            <div class="flex items-center gap-3">
+              <span class="rounded-lg bg-warning/10 p-2 text-warning">
+                <.icon name="hero-chart-bar-square" class="size-5" />
+              </span>
+              <h3 class="font-semibold">Resumen mensual</h3>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-base-content/60">
+              Indicadores derivados desde líneas y ejecuciones.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-box border border-base-300 bg-base-100 p-6 shadow-sm">
+        <h2 class="text-lg font-semibold">Datos base</h2>
+        <div :if={@dashboard.organization} class="mt-4 rounded-box bg-base-200 p-4">
+          <p class="text-sm text-base-content/55">Organización</p>
+          <p class="mt-1 font-semibold">{@dashboard.organization.legal_name}</p>
+          <p class="mt-1 text-sm text-base-content/60">
+            Cédula jurídica: {@dashboard.organization.tax_id}
+          </p>
+          <p class="mt-1 text-sm text-base-content/60">
+            Moneda base: {@dashboard.organization.base_currency.code}
+          </p>
+        </div>
+
+        <div class="mt-5 overflow-x-auto">
+          <table id="exchange-rates-table" class="table">
+            <thead>
+              <tr>
+                <th>Par</th>
+                <th>Tipo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr :for={rate <- @dashboard.exchange_rates}>
+                <td>{rate.base_currency.code} / {rate.quote_currency.code}</td>
+                <td>{Decimal.to_string(rate.rate, :normal)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</Layouts.app>
