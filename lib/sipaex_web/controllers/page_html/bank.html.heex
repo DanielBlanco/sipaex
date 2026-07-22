@@ -1,4 +1,4 @@
-<Layouts.app flash={@flash} active_module="bank">
+<Layouts.app flash={@flash} active_module="bank" organization={@summary.organization}>
   <section id="bank-page" class="px-4 py-6 sm:px-6 lg:px-8">
     <div class="flex items-center justify-between gap-4">
       <div class="flex items-center gap-2">
@@ -21,15 +21,26 @@
         </div>
       </div>
 
-      <a
-        id="bank-ledger-link"
-        href={~p"/ledger"}
-        class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
-        data-tip="Cuenta corriente"
-        aria-label="Cuenta corriente"
-      >
-        <.icon name="hero-credit-card" class="size-5" />
-      </a>
+      <div class="flex items-center gap-1">
+        <a
+          id="bank-panel-link"
+          href={~p"/dashboard"}
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Panel"
+          aria-label="Panel"
+        >
+          <.icon name="hero-squares-2x2" class="size-5" />
+        </a>
+        <a
+          id="bank-ledger-link"
+          href={~p"/ledger"}
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Cuenta corriente"
+          aria-label="Cuenta corriente"
+        >
+          <.icon name="hero-credit-card" class="size-5" />
+        </a>
+      </div>
     </div>
 
     <div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">

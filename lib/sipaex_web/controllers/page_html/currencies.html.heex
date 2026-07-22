@@ -1,4 +1,4 @@
-<Layouts.app flash={@flash} active_module="currencies">
+<Layouts.app flash={@flash} active_module="currencies" organization={@settings.organization}>
   <section id="currencies-page" class="px-4 py-8 sm:px-6 lg:px-8">
     <div class="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
       <div>
@@ -11,9 +11,20 @@
         </p>
       </div>
 
-      <div class="rounded-box border border-base-300 bg-base-100 px-4 py-3 text-sm shadow-sm">
-        <span class="text-base-content/55">Moneda de almacenamiento:</span>
-        <span class="ml-2 font-semibold">{@settings.storage_currency.code}</span>
+      <div class="flex items-center gap-2">
+        <a
+          id="currencies-panel-link"
+          href={~p"/dashboard"}
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Panel"
+          aria-label="Panel"
+        >
+          <.icon name="hero-squares-2x2" class="size-5" />
+        </a>
+        <div class="rounded-box border border-base-300 bg-base-100 px-4 py-3 text-sm shadow-sm">
+          <span class="text-base-content/55">Moneda de almacenamiento:</span>
+          <span class="ml-2 font-semibold">{@settings.storage_currency.code}</span>
+        </div>
       </div>
     </div>
 

@@ -1,4 +1,4 @@
-<Layouts.app flash={@flash} active_module="ledger">
+<Layouts.app flash={@flash} active_module="ledger" organization={@settings.organization}>
   <section id="ledger-page" class="px-4 py-6 sm:px-6 lg:px-8">
     <div class="flex items-center justify-between gap-4">
       <div class="flex items-center gap-2">
@@ -22,6 +22,15 @@
       </div>
 
       <div id="ledger-actions-menu" class="flex items-center gap-1">
+        <a
+          id="ledger-panel-link"
+          href={~p"/dashboard"}
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Panel"
+          aria-label="Panel"
+        >
+          <.icon name="hero-squares-2x2" class="size-5" />
+        </a>
         <a
           id="ledger-currencies-link"
           href={~p"/currencies"}

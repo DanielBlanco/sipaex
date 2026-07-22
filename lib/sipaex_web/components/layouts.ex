@@ -33,6 +33,7 @@ defmodule SipaexWeb.Layouts do
 
   attr :active_module, :string, default: "dashboard", doc: "the active top navigation module"
   attr :show_navigation, :boolean, default: true, doc: "whether to show the app top navigation"
+  attr :organization, :any, default: nil, doc: "the active organization shown in the header"
 
   slot :inner_block, required: true
 
@@ -55,15 +56,29 @@ defmodule SipaexWeb.Layouts do
           </a>
         </div>
         <div class="flex-none">
-          <ul class="flex items-center gap-2 px-1">
-            <li>
-              <.theme_toggle />
-            </li>
-          </ul>
+          <div class="flex items-center justify-end gap-3">
+            <div
+              :if={@show_navigation && @organization}
+              id="app-organization-summary"
+              class="hidden max-w-xl items-center gap-3 rounded-box border border-base-300 bg-base-200/70 px-4 py-2 text-right shadow-sm md:flex"
+            >
+              <div class="min-w-0">
+                <p class="truncate text-sm font-semibold leading-5">
+                  {@organization.legal_name}
+                </p>
+                <div class="flex flex-wrap justify-end gap-x-3 gap-y-1 text-xs text-base-content/60">
+                  <span>Cédula jurídica: {@organization.tax_id}</span>
+                  <span>Moneda base: {@organization.base_currency.code}</span>
+                </div>
+              </div>
+              <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-base-100 text-base-content/70">
+                <.icon name="hero-building-office-2" class="size-5" />
+              </span>
+            </div>
+            <.theme_toggle />
+          </div>
         </div>
       </div>
-
-      <.top_navigation :if={@show_navigation} active_module={@active_module} />
     </header>
 
     <main class="min-h-[calc(100vh-4rem)] bg-base-200/60">

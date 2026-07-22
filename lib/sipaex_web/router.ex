@@ -20,6 +20,25 @@ defmodule SipaexWeb.Router do
     get "/", PageController, :home
     get "/dashboard", PageController, :dashboard
     get "/bank", PageController, :bank
+    get "/purchases", PageController, :purchases
+    post "/purchases/parties", PageController, :create_purchase_party
+    post "/purchases/entries", PageController, :create_purchase_entry
+    get "/sales", PageController, :sales
+    post "/sales/parties", PageController, :create_sale_party
+    post "/sales/entries", PageController, :create_sale_entry
+    get "/dividends", PageController, :dividends
+    post "/dividends/beneficiaries", PageController, :create_dividend_beneficiary
+    post "/dividends/capital-entries", PageController, :create_shareholder_capital_entry
+    post "/dividends/entries", PageController, :create_dividend_entry
+    get "/expenses", PageController, :expenses
+    post "/expenses/providers", PageController, :create_expense_provider
+    post "/expenses/entries", PageController, :create_expense_entry
+    post "/expenses/financial-entries", PageController, :create_financial_expense_entry
+    get "/taxes", PageController, :taxes
+    post "/taxes/vat-rates", PageController, :create_vat_rate
+    put "/taxes/vat-rates/:id/toggle", PageController, :toggle_vat_rate
+    post "/taxes/income-tax", PageController, :create_income_tax_entry
+    post "/taxes/vat-periods", PageController, :create_vat_period
     post "/petty-cash", PageController, :create_petty_cash
     delete "/petty-cash/:id", PageController, :delete_petty_cash
     get "/ledger", PageController, :ledger

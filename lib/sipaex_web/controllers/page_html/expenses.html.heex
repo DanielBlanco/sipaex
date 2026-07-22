@@ -1,0 +1,731 @@
+<Layouts.app flash={@flash} active_module="expenses" organization={@settings.organization}>
+  <section id="expenses-page" class="px-4 py-6 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold tracking-tight text-base-content">Gastos</h1>
+        <div class="dropdown dropdown-end">
+          <button
+            id="expenses-info-button"
+            type="button"
+            tabindex="0"
+            class="btn btn-ghost btn-xs btn-circle"
+          >
+            <.icon name="hero-information-circle" class="size-5" />
+          </button>
+          <div
+            tabindex="0"
+            class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+          >
+            Registre proveedores, facturas de gastos administrativos o de venta, y gastos financieros. Los mayores se calculan desde los registros.
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1">
+        <button
+          id="expenses-add-provider-button"
+          type="button"
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Agregar proveedor"
+          aria-label="Agregar proveedor"
+          data-modal-target="expense_provider_modal"
+        >
+          <.icon name="hero-user-plus" class="size-5" />
+        </button>
+        <button
+          id="expenses-add-entry-button"
+          type="button"
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Registrar gasto"
+          aria-label="Registrar gasto"
+          data-modal-target="expense_entry_modal"
+        >
+          <.icon name="hero-receipt-percent" class="size-5" />
+        </button>
+        <button
+          id="expenses-add-financial-entry-button"
+          type="button"
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Registrar gasto financiero"
+          aria-label="Registrar gasto financiero"
+          data-modal-target="financial_expense_entry_modal"
+        >
+          <.icon name="hero-building-library" class="size-5" />
+        </button>
+        <a
+          id="expenses-panel-link"
+          href={~p"/dashboard"}
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Panel"
+          aria-label="Panel"
+        >
+          <.icon name="hero-squares-2x2" class="size-5" />
+        </a>
+      </div>
+    </div>
+
+    <div
+      id="expenses-tabs"
+      class="mt-6 rounded-box border border-base-300 bg-base-100 shadow-sm"
+      data-active-expenses-tab={@active_expenses_tab}
+    >
+      <div role="tablist" class="tabs tabs-border px-4 pt-3">
+        <button
+          id="expenses-dashboard-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_expenses_tab == "dashboard" && "tab-active"]}
+          data-expenses-tab="dashboard"
+        >
+          Dashboard
+        </button>
+        <button
+          id="expenses-providers-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_expenses_tab == "providers" && "tab-active"]}
+          data-expenses-tab="providers"
+        >
+          Proveedores
+        </button>
+        <button
+          id="expenses-entries-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_expenses_tab == "entries" && "tab-active"]}
+          data-expenses-tab="entries"
+        >
+          Administrativos y ventas
+        </button>
+        <button
+          id="expenses-financial-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_expenses_tab == "financial" && "tab-active"]}
+          data-expenses-tab="financial"
+        >
+          Financieros
+        </button>
+      </div>
+
+      <div class="border-t border-base-300 p-4 sm:p-5">
+        <div
+          id="expenses-dashboard-panel"
+          data-expenses-panel="dashboard"
+          hidden={@active_expenses_tab != "dashboard"}
+        >
+          <div class="mb-4 flex items-center gap-2">
+            <h2 class="text-base font-semibold">Resumen</h2>
+            <div class="dropdown">
+              <button
+                id="expenses-dashboard-help"
+                type="button"
+                tabindex="0"
+                class="btn btn-ghost btn-xs btn-circle"
+              >
+                <.icon name="hero-question-mark-circle" class="size-5" />
+              </button>
+              <div
+                tabindex="0"
+                class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+              >
+                Consolida los mayores de gastos administrativos, ventas y financieros. El saldo por pagar sale del total menos los abonos.
+              </div>
+            </div>
+          </div>
+
+          <div class="grid gap-3 md:grid-cols-4">
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Total gastos</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Expenses.display_amount(@settings.ordinary_totals.total, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">IVA</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Expenses.display_amount(@settings.ordinary_totals.tax, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Gastos por pagar</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Expenses.display_amount(@settings.ordinary_totals.payable, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Gastos financieros</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Expenses.display_amount(
+                  @settings.financial_totals.financial_expenses,
+                  @settings
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-5 grid gap-4 xl:grid-cols-2">
+            <div class="overflow-x-auto">
+              <table id="expenses-major-table" class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Proveedor</th>
+                    <th>Tipo</th>
+                    <th class="text-right">Total gastos</th>
+                    <th class="text-right">Abonos</th>
+                    <th class="text-right">Por pagar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={row <- @settings.ordinary_rows}>
+                    <td>{row.provider.name}</td>
+                    <td>{Sipaex.Expenses.entry_category_label(row.provider.category)}</td>
+                    <td class="text-right">
+                      {Sipaex.Expenses.display_amount(row.total, @settings)}
+                    </td>
+                    <td class="text-right">
+                      {Sipaex.Expenses.display_amount(row.payments, @settings)}
+                    </td>
+                    <td class="text-right font-medium">
+                      {Sipaex.Expenses.display_amount(row.payable, @settings)}
+                    </td>
+                  </tr>
+                  <tr class="hidden only:table-row">
+                    <td colspan="5" class="py-6 text-center text-base-content/55">
+                      No hay gastos administrativos o de venta.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table id="financial-expenses-major-table" class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Proveedor financiero</th>
+                    <th class="text-right">Préstamos</th>
+                    <th class="text-right">Abonos principal</th>
+                    <th class="text-right">Gastos financieros por pagar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={row <- @settings.financial_rows}>
+                    <td>{row.provider.name}</td>
+                    <td class="text-right">
+                      {Sipaex.Expenses.display_amount(row.loans, @settings)}
+                    </td>
+                    <td class="text-right">
+                      {Sipaex.Expenses.display_amount(row.principal_payments, @settings)}
+                    </td>
+                    <td class="text-right font-medium">
+                      {Sipaex.Expenses.display_amount(row.financial_expense_payable, @settings)}
+                    </td>
+                  </tr>
+                  <tr class="hidden only:table-row">
+                    <td colspan="4" class="py-6 text-center text-base-content/55">
+                      No hay gastos financieros.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="expenses-providers-panel"
+          data-expenses-panel="providers"
+          hidden={@active_expenses_tab != "providers"}
+        >
+          <div class="mb-4 flex items-center gap-2">
+            <h2 class="text-base font-semibold">Proveedores</h2>
+            <div class="dropdown">
+              <button
+                id="expenses-providers-help"
+                type="button"
+                tabindex="0"
+                class="btn btn-ghost btn-xs btn-circle"
+              >
+                <.icon name="hero-question-mark-circle" class="size-5" />
+              </button>
+              <div
+                tabindex="0"
+                class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+              >
+                Cree proveedores administrativos, de ventas o financieros. Los proveedores financieros pueden guardar datos del préstamo.
+              </div>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table id="expense-providers-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Proveedor</th>
+                  <th>Tipo</th>
+                  <th>Identificación</th>
+                  <th>Contacto</th>
+                  <th class="text-right">Plazo</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={provider <- @settings.providers}>
+                  <td class="font-medium">{provider.name}</td>
+                  <td>{Sipaex.Expenses.entry_category_label(provider.category)}</td>
+                  <td>{provider.identification}</td>
+                  <td>{provider.contact || provider.email || provider.phone}</td>
+                  <td class="text-right">{provider.payment_terms_days}</td>
+                </tr>
+                <tr class="hidden only:table-row">
+                  <td colspan="5" class="py-6 text-center text-base-content/55">
+                    No hay proveedores registrados.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          id="expenses-entries-panel"
+          data-expenses-panel="entries"
+          hidden={@active_expenses_tab != "entries"}
+        >
+          <div class="mb-4 flex items-center gap-2">
+            <h2 class="text-base font-semibold">Gastos administrativos y de ventas</h2>
+            <div class="dropdown">
+              <button
+                id="expenses-entries-help"
+                type="button"
+                tabindex="0"
+                class="btn btn-ghost btn-xs btn-circle"
+              >
+                <.icon name="hero-question-mark-circle" class="size-5" />
+              </button>
+              <div
+                tabindex="0"
+                class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+              >
+                Registre facturas de proveedores. El sistema calcula IVA, total y saldo por pagar desde la factura, notas y abonos.
+              </div>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table id="expense-entries-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Proveedor</th>
+                  <th>Tipo</th>
+                  <th>Factura</th>
+                  <th class="text-right">Total</th>
+                  <th class="text-right">Abono</th>
+                  <th class="text-right">Por pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={entry <- @settings.entries}>
+                  <td>{entry.entry_date}</td>
+                  <td>{entry.provider.name}</td>
+                  <td>{Sipaex.Expenses.entry_category_label(entry.category)}</td>
+                  <td>{entry.invoice_number}</td>
+                  <td class="text-right">
+                    {Sipaex.Expenses.display_native_amount(entry.total_usd, entry, @settings)}
+                  </td>
+                  <td class="text-right">
+                    {Sipaex.Expenses.display_native_amount(entry.payment_usd, entry, @settings)}
+                  </td>
+                  <td class="text-right font-medium">
+                    {Sipaex.Expenses.display_amount(entry.payable_usd, @settings)}
+                  </td>
+                </tr>
+                <tr class="hidden only:table-row">
+                  <td colspan="7" class="py-6 text-center text-base-content/55">
+                    No hay gastos registrados.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          id="expenses-financial-panel"
+          data-expenses-panel="financial"
+          hidden={@active_expenses_tab != "financial"}
+        >
+          <div class="mb-4 flex items-center gap-2">
+            <h2 class="text-base font-semibold">Gastos financieros</h2>
+            <div class="dropdown">
+              <button
+                id="expenses-financial-help"
+                type="button"
+                tabindex="0"
+                class="btn btn-ghost btn-xs btn-circle"
+              >
+                <.icon name="hero-question-mark-circle" class="size-5" />
+              </button>
+              <div
+                tabindex="0"
+                class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+              >
+                Use esta sección para préstamos, abonos a principal, intereses, notas y abonos a gastos financieros.
+              </div>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table id="financial-expense-entries-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Proveedor</th>
+                  <th class="text-right">Préstamo</th>
+                  <th class="text-right">Abono principal</th>
+                  <th class="text-right">Gasto financiero</th>
+                  <th class="text-right">Por pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={entry <- @settings.financial_entries}>
+                  <td>{entry.entry_date}</td>
+                  <td>{entry.provider.name}</td>
+                  <td class="text-right">
+                    {Sipaex.Expenses.display_native_amount(
+                      entry.loan_amount_usd,
+                      entry,
+                      @settings
+                    )}
+                  </td>
+                  <td class="text-right">
+                    {Sipaex.Expenses.display_native_amount(
+                      entry.principal_payment_usd,
+                      entry,
+                      @settings
+                    )}
+                  </td>
+                  <td class="text-right">
+                    {Sipaex.Expenses.display_native_amount(
+                      entry.net_financial_expense_usd,
+                      entry,
+                      @settings
+                    )}
+                  </td>
+                  <td class="text-right font-medium">
+                    {Sipaex.Expenses.display_amount(
+                      entry.financial_expense_payable_usd,
+                      @settings
+                    )}
+                  </td>
+                </tr>
+                <tr class="hidden only:table-row">
+                  <td colspan="6" class="py-6 text-center text-base-content/55">
+                    No hay gastos financieros registrados.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <.modal id="expense_provider_modal" title="Agregar proveedor">
+      <.form
+        for={@provider_form}
+        id="expense-provider-form"
+        action={~p"/expenses/providers"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <.input
+          field={@provider_form[:category]}
+          type="select"
+          label="Tipo"
+          options={Sipaex.Expenses.provider_category_options()}
+        />
+        <.input field={@provider_form[:name]} label="Nombre" required />
+        <.input field={@provider_form[:identification]} label="Identificación" />
+        <.input field={@provider_form[:email]} type="email" label="Email" />
+        <.input field={@provider_form[:phone]} label="Teléfono" />
+        <.input field={@provider_form[:contact]} label="Contacto" />
+        <.input
+          field={@provider_form[:payment_terms_days]}
+          type="number"
+          label="Plazo en días"
+          min="0"
+          step="1"
+        />
+        <.input field={@provider_form[:operation_number]} label="N° operación" />
+        <.input field={@provider_form[:loan_concept]} label="Concepto préstamo" />
+        <.input
+          field={@provider_form[:interest_rate]}
+          type="number"
+          label="Tasa interés"
+          min="0"
+          step="0.0001"
+        />
+        <.input
+          field={@provider_form[:term_months]}
+          type="number"
+          label="Plazo meses"
+          min="1"
+          step="1"
+        />
+        <div class="sm:col-span-2">
+          <.input field={@provider_form[:address]} label="Dirección" />
+        </div>
+
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="expense-provider-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+
+    <.modal id="expense_entry_modal" title="Registrar gasto">
+      <.form
+        for={@entry_form}
+        id="expense-entry-form"
+        action={~p"/expenses/entries"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <div class="sm:col-span-2">
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1">Proveedor</span>
+              <select
+                id="expense_entry_provider_id"
+                name={@entry_form[:provider_id].name}
+                class="w-full select"
+                required
+              >
+                <option value="">Seleccione un proveedor</option>
+                <option
+                  :for={
+                    provider <- @settings.administrative_providers ++ @settings.sales_providers
+                  }
+                  value={provider.id}
+                  selected={@entry_form[:provider_id].value == provider.id}
+                >
+                  {provider.name} · {Sipaex.Expenses.entry_category_label(provider.category)}
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div>
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1">Moneda</span>
+              <select
+                id="expense_entry_currency_id"
+                name={@entry_form[:currency_id].name}
+                class="w-full select"
+                required
+              >
+                <option
+                  :for={currency <- @settings.currencies}
+                  value={currency.id}
+                  selected={@entry_form[:currency_id].value == currency.id}
+                  data-exchange-rate={
+                    currency
+                    |> Sipaex.Expenses.default_exchange_rate_for_currency()
+                    |> then(&if(&1, do: Decimal.to_string(&1, :normal), else: ""))
+                  }
+                >
+                  {currency.code} - {currency.name}
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <.input field={@entry_form[:entry_date]} type="date" label="Fecha" required />
+        <.input field={@entry_form[:invoice_number]} label="N° factura" />
+        <.input
+          field={@entry_form[:tax_rate]}
+          type="select"
+          label="IVA"
+          options={Sipaex.Taxes.vat_rate_options()}
+        />
+        <.input
+          field={@entry_form[:exempt_amount]}
+          type="number"
+          label="Gastos sin IVA"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@entry_form[:taxable_amount]}
+          type="number"
+          label="Gastos con IVA"
+          min="0"
+          step="0.01"
+          required
+        />
+        <.input
+          field={@entry_form[:credit_note]}
+          type="number"
+          label="Notas de crédito"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@entry_form[:debit_note]}
+          type="number"
+          label="Notas de débito"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@entry_form[:payment]}
+          type="number"
+          label="Abono"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@entry_form[:exchange_rate]}
+          type="number"
+          label="Tipo de cambio"
+          min="0.00000001"
+          step="0.00000001"
+        />
+        <.input field={@entry_form[:voucher]} label="Comprobante" />
+        <div class="sm:col-span-2">
+          <.input field={@entry_form[:concept]} label="Concepto" required />
+        </div>
+
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="expense-entry-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+
+    <.modal id="financial_expense_entry_modal" title="Registrar gasto financiero">
+      <.form
+        for={@financial_entry_form}
+        id="financial-expense-entry-form"
+        action={~p"/expenses/financial-entries"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <div class="sm:col-span-2">
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1">Proveedor financiero</span>
+              <select
+                id="financial_entry_provider_id"
+                name={@financial_entry_form[:provider_id].name}
+                class="w-full select"
+                required
+              >
+                <option value="">Seleccione un proveedor financiero</option>
+                <option
+                  :for={provider <- @settings.financial_providers}
+                  value={provider.id}
+                  selected={@financial_entry_form[:provider_id].value == provider.id}
+                >
+                  {provider.name}
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div>
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1">Moneda</span>
+              <select
+                id="financial_entry_currency_id"
+                name={@financial_entry_form[:currency_id].name}
+                class="w-full select"
+                required
+              >
+                <option
+                  :for={currency <- @settings.currencies}
+                  value={currency.id}
+                  selected={@financial_entry_form[:currency_id].value == currency.id}
+                  data-exchange-rate={
+                    currency
+                    |> Sipaex.Expenses.default_exchange_rate_for_currency()
+                    |> then(&if(&1, do: Decimal.to_string(&1, :normal), else: ""))
+                  }
+                >
+                  {currency.code} - {currency.name}
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <.input field={@financial_entry_form[:entry_date]} type="date" label="Fecha" required />
+        <.input
+          field={@financial_entry_form[:loan_amount]}
+          type="number"
+          label="Monto préstamo"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@financial_entry_form[:principal_payment]}
+          type="number"
+          label="Abono principal"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@financial_entry_form[:financial_expense]}
+          type="number"
+          label="Gasto financiero"
+          min="0"
+          step="0.01"
+          required
+        />
+        <.input
+          field={@financial_entry_form[:credit_note]}
+          type="number"
+          label="Nota crédito"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@financial_entry_form[:debit_note]}
+          type="number"
+          label="Nota débito"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@financial_entry_form[:financial_expense_payment]}
+          type="number"
+          label="Abono gasto financiero"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@financial_entry_form[:exchange_rate]}
+          type="number"
+          label="Tipo de cambio"
+          min="0.00000001"
+          step="0.00000001"
+        />
+        <.input field={@financial_entry_form[:voucher]} label="Comprobante" />
+        <div class="sm:col-span-2">
+          <.input field={@financial_entry_form[:concept]} label="Concepto" required />
+        </div>
+
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="financial-expense-entry-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+  </section>
+</Layouts.app>

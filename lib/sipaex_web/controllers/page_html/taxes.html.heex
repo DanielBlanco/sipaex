@@ -1,0 +1,646 @@
+<Layouts.app flash={@flash} active_module="taxes" organization={@settings.organization}>
+  <section id="taxes-page" class="px-4 py-6 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold tracking-tight text-base-content">Impuestos</h1>
+        <div class="dropdown dropdown-end">
+          <button
+            id="taxes-info-button"
+            type="button"
+            tabindex="0"
+            class="btn btn-ghost btn-xs btn-circle"
+          >
+            <.icon name="hero-information-circle" class="size-5" />
+          </button>
+          <div
+            tabindex="0"
+            class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+          >
+            Registre impuesto de renta e IVA. IVA calcula débitos menos créditos; renta mantiene impuesto, abonos y saldo por pagar.
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1">
+        <button
+          id="taxes-add-vat-rate-button"
+          type="button"
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Agregar tarifa IVA"
+          aria-label="Agregar tarifa IVA"
+          data-modal-target="vat_rate_modal"
+        >
+          <.icon name="hero-percent-badge" class="size-5" />
+        </button>
+        <button
+          id="taxes-add-income-button"
+          type="button"
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Registrar renta"
+          aria-label="Registrar renta"
+          data-modal-target="income_tax_entry_modal"
+        >
+          <.icon name="hero-document-currency-dollar" class="size-5" />
+        </button>
+        <button
+          id="taxes-add-vat-button"
+          type="button"
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Registrar IVA"
+          aria-label="Registrar IVA"
+          data-modal-target="vat_period_modal"
+        >
+          <.icon name="hero-receipt-refund" class="size-5" />
+        </button>
+        <a
+          id="taxes-panel-link"
+          href={~p"/dashboard"}
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Panel"
+          aria-label="Panel"
+        >
+          <.icon name="hero-squares-2x2" class="size-5" />
+        </a>
+      </div>
+    </div>
+
+    <div
+      id="taxes-tabs"
+      class="mt-6 rounded-box border border-base-300 bg-base-100 shadow-sm"
+      data-active-taxes-tab={@active_taxes_tab}
+    >
+      <div role="tablist" class="tabs tabs-border px-4 pt-3">
+        <button
+          id="taxes-dashboard-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_taxes_tab == "dashboard" && "tab-active"]}
+          data-taxes-tab="dashboard"
+        >
+          Dashboard
+        </button>
+        <button
+          id="taxes-vat-rates-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_taxes_tab == "vat-rates" && "tab-active"]}
+          data-taxes-tab="vat-rates"
+        >
+          Tarifas IVA
+        </button>
+        <button
+          id="taxes-income-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_taxes_tab == "income" && "tab-active"]}
+          data-taxes-tab="income"
+        >
+          Renta
+        </button>
+        <button
+          id="taxes-vat-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_taxes_tab == "vat" && "tab-active"]}
+          data-taxes-tab="vat"
+        >
+          IVA
+        </button>
+      </div>
+
+      <div class="border-t border-base-300 p-4 sm:p-5">
+        <div
+          id="taxes-dashboard-panel"
+          data-taxes-panel="dashboard"
+          hidden={@active_taxes_tab != "dashboard"}
+        >
+          <div class="mb-4 flex items-center gap-2">
+            <h2 class="text-base font-semibold">Resumen</h2>
+            <div class="dropdown">
+              <button
+                id="taxes-dashboard-help"
+                type="button"
+                tabindex="0"
+                class="btn btn-ghost btn-xs btn-circle"
+              >
+                <.icon name="hero-question-mark-circle" class="size-5" />
+              </button>
+              <div
+                tabindex="0"
+                class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+              >
+                Consolida el mayor de renta y el mayor de IVA. Los abonos alimentan el resumen de Banco.
+              </div>
+            </div>
+          </div>
+
+          <div class="grid gap-3 md:grid-cols-4">
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">
+                Tarifas IVA activas
+              </p>
+              <p class="mt-2 text-xl font-bold">
+                {Enum.count(@settings.vat_rates, & &1.active)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Renta por pagar</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Taxes.display_amount(@settings.income_tax_totals.payable, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">IVA neto</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Taxes.display_amount(@settings.vat_totals.vat, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">IVA por pagar</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Taxes.display_amount(@settings.vat_totals.payable, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Crédito IVA gastos</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Taxes.display_amount(@settings.expense_tax_credit, @settings)}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-5 grid gap-4 xl:grid-cols-2">
+            <div class="overflow-x-auto">
+              <table id="income-tax-major-table" class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Período</th>
+                    <th class="text-right">Impuesto</th>
+                    <th class="text-right">Abonos</th>
+                    <th class="text-right">Por pagar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Total renta</td>
+                    <td class="text-right">
+                      {Sipaex.Taxes.display_amount(@settings.income_tax_totals.tax, @settings)}
+                    </td>
+                    <td class="text-right">
+                      {Sipaex.Taxes.display_amount(
+                        @settings.income_tax_totals.payments,
+                        @settings
+                      )}
+                    </td>
+                    <td class="text-right font-medium">
+                      {Sipaex.Taxes.display_amount(@settings.income_tax_totals.payable, @settings)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="overflow-x-auto">
+              <table id="vat-major-table" class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Concepto</th>
+                    <th class="text-right">IVA</th>
+                    <th class="text-right">Abonos</th>
+                    <th class="text-right">Por pagar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Total IVA</td>
+                    <td class="text-right">
+                      {Sipaex.Taxes.display_amount(@settings.vat_totals.vat, @settings)}
+                    </td>
+                    <td class="text-right">
+                      {Sipaex.Taxes.display_amount(@settings.vat_totals.payments, @settings)}
+                    </td>
+                    <td class="text-right font-medium">
+                      {Sipaex.Taxes.display_amount(@settings.vat_totals.payable, @settings)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="taxes-vat-rates-panel"
+          data-taxes-panel="vat-rates"
+          hidden={@active_taxes_tab != "vat-rates"}
+        >
+          <div class="mb-4 flex items-center gap-2">
+            <h2 class="text-base font-semibold">Tarifas IVA</h2>
+            <div class="dropdown">
+              <button
+                id="taxes-vat-rates-help"
+                type="button"
+                tabindex="0"
+                class="btn btn-ghost btn-xs btn-circle"
+              >
+                <.icon name="hero-question-mark-circle" class="size-5" />
+              </button>
+              <div
+                tabindex="0"
+                class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+              >
+                Defina las tarifas IVA que la organización puede usar en compras, ventas y reportes. Una tarifa 0% cubre bienes exentos.
+              </div>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table id="vat-rates-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th class="text-right">Tarifa</th>
+                  <th>Uso</th>
+                  <th>Estado</th>
+                  <th class="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={rate <- @settings.vat_rates}>
+                  <td class="text-right font-medium">{Sipaex.Taxes.display_rate(rate.rate)}</td>
+                  <td>{rate.description}</td>
+                  <td>
+                    <span class={[
+                      "badge badge-sm",
+                      rate.active && "badge-success",
+                      !rate.active && "badge-ghost"
+                    ]}>
+                      {if(rate.active, do: "Activa", else: "Inactiva")}
+                    </span>
+                  </td>
+                  <td class="text-right">
+                    <span
+                      :if={Sipaex.Taxes.exempt_vat_rate?(rate)}
+                      class="btn btn-ghost btn-xs btn-square text-base-content/40"
+                      aria-label="Tarifa exenta obligatoria"
+                    >
+                      <.icon name="hero-lock-closed" class="size-4" />
+                    </span>
+                    <.form
+                      :if={!Sipaex.Taxes.exempt_vat_rate?(rate)}
+                      for={Phoenix.Component.to_form(%{})}
+                      id={"toggle-vat-rate-#{rate.id}"}
+                      action={~p"/taxes/vat-rates/#{rate.id}/toggle"}
+                      method="put"
+                    >
+                      <button
+                        type="submit"
+                        class={[
+                          "btn btn-ghost btn-xs btn-square",
+                          rate.active && "text-error",
+                          !rate.active && "text-success"
+                        ]}
+                        aria-label={
+                          if(rate.active, do: "Desactivar tarifa IVA", else: "Activar tarifa IVA")
+                        }
+                      >
+                        <.icon
+                          name={if(rate.active, do: "hero-x-mark", else: "hero-check")}
+                          class="size-4"
+                        />
+                      </button>
+                    </.form>
+                  </td>
+                </tr>
+                <tr class="hidden only:table-row">
+                  <td colspan="4" class="py-6 text-center text-base-content/55">
+                    No hay tarifas IVA registradas.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          id="taxes-income-panel"
+          data-taxes-panel="income"
+          hidden={@active_taxes_tab != "income"}
+        >
+          <div class="mb-4 flex items-center gap-2">
+            <h2 class="text-base font-semibold">Impuesto de renta</h2>
+            <div class="dropdown">
+              <button
+                id="taxes-income-help"
+                type="button"
+                tabindex="0"
+                class="btn btn-ghost btn-xs btn-circle"
+              >
+                <.icon name="hero-question-mark-circle" class="size-5" />
+              </button>
+              <div
+                tabindex="0"
+                class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+              >
+                Registre el impuesto calculado del período fiscal y sus abonos. El saldo por pagar se calcula automáticamente.
+              </div>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table id="income-tax-entries-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Período</th>
+                  <th>Comprobante</th>
+                  <th>Detalle</th>
+                  <th class="text-right">Impuesto</th>
+                  <th class="text-right">Abono</th>
+                  <th class="text-right">Por pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={entry <- @settings.income_tax_entries}>
+                  <td>{entry.entry_date}</td>
+                  <td>{entry.fiscal_period}</td>
+                  <td>{entry.voucher}</td>
+                  <td>{entry.concept}</td>
+                  <td class="text-right">
+                    {Sipaex.Taxes.display_native_amount(entry.tax_amount_usd, entry)}
+                  </td>
+                  <td class="text-right">
+                    {Sipaex.Taxes.display_native_amount(entry.payment_usd, entry)}
+                  </td>
+                  <td class="text-right font-medium">
+                    {Sipaex.Taxes.display_amount(entry.payable_usd, @settings)}
+                  </td>
+                </tr>
+                <tr class="hidden only:table-row">
+                  <td colspan="7" class="py-6 text-center text-base-content/55">
+                    No hay registros de renta.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="taxes-vat-panel" data-taxes-panel="vat" hidden={@active_taxes_tab != "vat"}>
+          <div class="mb-4 flex items-center gap-2">
+            <h2 class="text-base font-semibold">Impuesto de ventas IVA</h2>
+            <div class="dropdown">
+              <button
+                id="taxes-vat-help"
+                type="button"
+                tabindex="0"
+                class="btn btn-ghost btn-xs btn-circle"
+              >
+                <.icon name="hero-question-mark-circle" class="size-5" />
+              </button>
+              <div
+                tabindex="0"
+                class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+              >
+                Registre el mes y el abono. Los débitos de ventas y créditos de compras/gastos se toman desde sus módulos.
+              </div>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table id="vat-periods-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Mes</th>
+                  <th>Año</th>
+                  <th class="text-right">Débitos ventas</th>
+                  <th class="text-right">Créditos compras</th>
+                  <th class="text-right">Créditos gastos</th>
+                  <th class="text-right">IVA neto</th>
+                  <th class="text-right">Abono</th>
+                  <th class="text-right">Por pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={period <- @settings.vat_periods}>
+                  <td>{Sipaex.Taxes.month_name(period.period_month)}</td>
+                  <td>{period.period_year}</td>
+                  <td class="text-right">
+                    {Sipaex.Taxes.display_native_amount(period.debit_sales_usd, period)}
+                  </td>
+                  <td class="text-right">
+                    {Sipaex.Taxes.display_native_amount(period.credit_purchases_usd, period)}
+                  </td>
+                  <td class="text-right">
+                    {Sipaex.Taxes.display_native_amount(period.credit_expenses_usd, period)}
+                  </td>
+                  <td class="text-right">
+                    {Sipaex.Taxes.display_amount(period.net_vat_usd, @settings)}
+                  </td>
+                  <td class="text-right">
+                    {Sipaex.Taxes.display_native_amount(period.payment_usd, period)}
+                  </td>
+                  <td class="text-right font-medium">
+                    {Sipaex.Taxes.display_amount(period.payable_usd, @settings)}
+                  </td>
+                </tr>
+                <tr class="hidden only:table-row">
+                  <td colspan="8" class="py-6 text-center text-base-content/55">
+                    No hay períodos de IVA registrados.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <.modal id="vat_rate_modal" title="Agregar tarifa IVA">
+      <.form
+        for={@vat_rate_form}
+        id="vat-rate-form"
+        action={~p"/taxes/vat-rates"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <.input
+          field={@vat_rate_form[:rate]}
+          type="number"
+          label="Tarifa (%)"
+          min="0"
+          max="100"
+          step="0.01"
+          required
+        />
+        <div class="sm:col-span-2">
+          <.input field={@vat_rate_form[:description]} label="Uso" />
+        </div>
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="vat-rate-submit" type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </.form>
+    </.modal>
+
+    <.modal id="income_tax_entry_modal" title="Registrar impuesto de renta">
+      <.form
+        for={@income_tax_form}
+        id="income-tax-entry-form"
+        action={~p"/taxes/income-tax"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <div>
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1">Moneda</span>
+              <select
+                id="income_tax_entry_currency_id"
+                name={@income_tax_form[:currency_id].name}
+                class="w-full select"
+                required
+              >
+                <option
+                  :for={currency <- @settings.currencies}
+                  value={currency.id}
+                  selected={@income_tax_form[:currency_id].value == currency.id}
+                  data-exchange-rate={
+                    currency
+                    |> Sipaex.Taxes.default_exchange_rate_for_currency()
+                    |> then(&if(&1, do: Decimal.to_string(&1, :normal), else: ""))
+                  }
+                >
+                  {currency.code} - {currency.name}
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <.input field={@income_tax_form[:entry_date]} type="date" label="Fecha" required />
+        <.input field={@income_tax_form[:fiscal_period]} label="Período fiscal" required />
+        <.input
+          field={@income_tax_form[:tax_amount]}
+          type="number"
+          label="Impuesto de renta"
+          min="0"
+          step="0.01"
+          required
+        />
+        <.input
+          field={@income_tax_form[:payment]}
+          type="number"
+          label="Abono"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@income_tax_form[:exchange_rate]}
+          type="number"
+          label="Tipo de cambio"
+          min="0.00000001"
+          step="0.00000001"
+        />
+        <.input field={@income_tax_form[:voucher]} label="Comprobante" />
+        <div class="sm:col-span-2">
+          <.input field={@income_tax_form[:concept]} label="Detalle" required />
+        </div>
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="income-tax-entry-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+
+    <.modal id="vat_period_modal" title="Registrar IVA">
+      <.form
+        for={@vat_period_form}
+        id="vat-period-form"
+        action={~p"/taxes/vat-periods"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <div>
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1">Moneda</span>
+              <select
+                id="vat_period_currency_id"
+                name={@vat_period_form[:currency_id].name}
+                class="w-full select"
+                required
+              >
+                <option
+                  :for={currency <- @settings.currencies}
+                  value={currency.id}
+                  selected={@vat_period_form[:currency_id].value == currency.id}
+                  data-exchange-rate={
+                    currency
+                    |> Sipaex.Taxes.default_exchange_rate_for_currency()
+                    |> then(&if(&1, do: Decimal.to_string(&1, :normal), else: ""))
+                  }
+                >
+                  {currency.code} - {currency.name}
+                </option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <.input
+          field={@vat_period_form[:period_month]}
+          type="select"
+          label="Mes"
+          options={Sipaex.Taxes.month_options()}
+        />
+        <.input
+          field={@vat_period_form[:period_year]}
+          type="number"
+          label="Año"
+          min="1900"
+          step="1"
+          required
+        />
+        <div class="sm:col-span-2 grid gap-2 rounded-box border border-base-300 bg-base-200/60 p-3 sm:grid-cols-3">
+          <div>
+            <p class="text-xs font-medium uppercase text-base-content/55">Débitos ventas</p>
+            <p class="mt-1 font-semibold">
+              {Sipaex.Taxes.display_amount(@vat_source_totals.debit_sales, @settings)}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-base-content/55">Créditos compras</p>
+            <p class="mt-1 font-semibold">
+              {Sipaex.Taxes.display_amount(@vat_source_totals.credit_purchases, @settings)}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs font-medium uppercase text-base-content/55">Créditos gastos</p>
+            <p class="mt-1 font-semibold">
+              {Sipaex.Taxes.display_amount(@vat_source_totals.credit_expenses, @settings)}
+            </p>
+          </div>
+        </div>
+        <.input
+          field={@vat_period_form[:payment]}
+          type="number"
+          label="Abono"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@vat_period_form[:exchange_rate]}
+          type="number"
+          label="Tipo de cambio"
+          min="0.00000001"
+          step="0.00000001"
+        />
+        <.input field={@vat_period_form[:voucher]} label="Comprobante" />
+        <div class="sm:col-span-2">
+          <.input field={@vat_period_form[:concept]} label="Detalle" required />
+        </div>
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="vat-period-submit" type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </.form>
+    </.modal>
+  </section>
+</Layouts.app>

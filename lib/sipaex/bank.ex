@@ -12,11 +12,14 @@ defmodule Sipaex.Bank do
   alias Sipaex.Common.Currencies
   alias Sipaex.Common.Currency
   alias Sipaex.Common.ExchangeRate
+  alias Sipaex.Dividends
+  alias Sipaex.Expenses
   alias Sipaex.Ledger
   alias Sipaex.Ledger.ExchangeDifference
   alias Sipaex.Ledger.Transaction
   alias Sipaex.Organizations.Organization
   alias Sipaex.Repo
+  alias Sipaex.Taxes
 
   def summary do
     currency_settings = Currencies.currency_settings()
@@ -104,11 +107,21 @@ defmodule Sipaex.Bank do
       |> reporting_amount(currency_settings)
 
     exchange_difference = sum_exchange_differences(organization, currency_settings)
+    expense_totals = Expenses.summary_totals()
+    tax_totals = Taxes.summary_totals()
 
     %{
       credit_notes: credit_notes,
       debit_notes: debit_notes,
-      exchange_difference: exchange_difference
+      exchange_difference: exchange_difference,
+      dividend_payments: Dividends.summary_totals().payments,
+      administrative_expenses: expense_totals.administrative_payments,
+      sales_expenses: expense_totals.sales_payments,
+      financial_expenses: expense_totals.financial_expense_payments,
+      principal_payments: expense_totals.principal_payments,
+      financial_loans: expense_totals.financial_loans,
+      income_tax_payments: tax_totals.income_tax_payments,
+      vat_payments: tax_totals.vat_payments
     }
   end
 
@@ -117,13 +130,33 @@ defmodule Sipaex.Bank do
       row("EGRESOS POR CUENTAS POR PAGAR COMPRAS"),
       row("INGRESOS POR CUENTAS POR COBRAR VENTAS CORRIENTES"),
       row("EGRESOS POR PAGO COMISIONES SOBRE VENTAS"),
-      row("EGRESOS POR GASTOS ADMINISTRATIVOS"),
-      row("EGRESOS POR GASTOS DE VENTA"),
-      row("INGRESOS POR PRÉSTAMOS (DOC X PAGAR)"),
-      row("EGRESOS POR ABONOS A PRÉSTAMOS (DOC X PAGAR)"),
-      row("EGRESOS POR PAGO GASTOS FINANCIEROS"),
-      row("EGRESOS POR PAGO IMPUESTOS DE RENTA"),
-      row("EGRESOS POR PAGO IMPUESTOS DE VENTA - IVA -"),
+      row(
+        "EGRESOS POR GASTOS ADMINISTRATIVOS",
+        Decimal.new("0"),
+        ledger_rows.administrative_expenses
+      ),
+      row("EGRESOS POR GASTOS DE VENTA", Decimal.new("0"), ledger_rows.sales_expenses),
+      row("INGRESOS POR PRÉSTAMOS (DOC X PAGAR)", ledger_rows.financial_loans, Decimal.new("0")),
+      row(
+        "EGRESOS POR ABONOS A PRÉSTAMOS (DOC X PAGAR)",
+        Decimal.new("0"),
+        ledger_rows.principal_payments
+      ),
+      row(
+        "EGRESOS POR PAGO GASTOS FINANCIEROS",
+        Decimal.new("0"),
+        ledger_rows.financial_expenses
+      ),
+      row(
+        "EGRESOS POR PAGO IMPUESTOS DE RENTA",
+        Decimal.new("0"),
+        ledger_rows.income_tax_payments
+      ),
+      row(
+        "EGRESOS POR PAGO IMPUESTOS DE VENTA - IVA -",
+        Decimal.new("0"),
+        ledger_rows.vat_payments
+      ),
       row("EGRESOS POR EDIFICIOS POR PAGAR"),
       row("EGRESOS POR EQUIPO DE CÓMPUTO POR PAGAR"),
       row("EGRESOS POR MAQUINARIA POR PAGAR"),
@@ -144,7 +177,7 @@ defmodule Sipaex.Bank do
       row("EGRESOS POR INCAPACIDADES"),
       row("INGRESOS POR NOTA DE CRÉDITO DE BANCOS", ledger_rows.credit_notes, Decimal.new("0")),
       row("EGRESOS POR NOTA DE DÉBITO DE BANCOS", Decimal.new("0"), ledger_rows.debit_notes),
-      row("EGRESOS POR PAGO DE DIVIDENDOS"),
+      row("EGRESOS POR PAGO DE DIVIDENDOS", Decimal.new("0"), ledger_rows.dividend_payments),
       signed_row("DIFERENCIAL CAMBIARIO", ledger_rows.exchange_difference)
     ]
   end

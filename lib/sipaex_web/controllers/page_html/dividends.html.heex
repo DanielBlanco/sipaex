@@ -1,0 +1,628 @@
+<Layouts.app flash={@flash} active_module="dividends" organization={@settings.organization}>
+  <section id="dividends-page" class="px-4 py-6 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold tracking-tight text-base-content">Capital y dividendos</h1>
+        <div class="dropdown dropdown-end">
+          <button
+            id="dividends-info-button"
+            type="button"
+            tabindex="0"
+            class="btn btn-ghost btn-xs btn-circle"
+          >
+            <.icon name="hero-information-circle" class="size-5" />
+          </button>
+          <div
+            tabindex="0"
+            class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+          >
+            Registre accionistas, suscripciones de capital y dividendos. La participación para dividendos se calcula desde capital accionario.
+          </div>
+        </div>
+      </div>
+
+      <a
+        id="dividends-panel-link"
+        href={~p"/dashboard"}
+        class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+        data-tip="Panel"
+        aria-label="Panel"
+      >
+        <.icon name="hero-squares-2x2" class="size-5" />
+      </a>
+    </div>
+
+    <div
+      id="dividends-tabs"
+      class="mt-6 rounded-box border border-base-300 bg-base-100 shadow-sm"
+      data-active-dividends-tab={@active_dividends_tab}
+    >
+      <div role="tablist" class="tabs tabs-border px-4 pt-3">
+        <button
+          id="dividends-wizard-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_dividends_tab == "wizard" && "tab-active"]}
+          data-dividends-tab="wizard"
+        >
+          Guía
+        </button>
+        <button
+          id="dividends-dashboard-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_dividends_tab == "dashboard" && "tab-active"]}
+          data-dividends-tab="dashboard"
+        >
+          Dashboard
+        </button>
+        <button
+          id="dividends-shareholders-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_dividends_tab == "shareholders" && "tab-active"]}
+          data-dividends-tab="shareholders"
+        >
+          Accionistas
+        </button>
+        <button
+          id="dividends-capital-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_dividends_tab == "capital" && "tab-active"]}
+          data-dividends-tab="capital"
+        >
+          Capital accionario
+        </button>
+        <button
+          id="dividends-entries-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_dividends_tab == "entries" && "tab-active"]}
+          data-dividends-tab="entries"
+        >
+          Dividendos
+        </button>
+      </div>
+
+      <div class="border-t border-base-300 p-4 sm:p-5">
+        <div
+          id="dividends-wizard-panel"
+          data-dividends-panel="wizard"
+          hidden={@active_dividends_tab != "wizard"}
+        >
+          <div class="flex items-center gap-2">
+            <h2 class="text-base font-semibold">Guía de capital y dividendos</h2>
+            <div class="dropdown">
+              <button
+                id="dividends-wizard-help"
+                type="button"
+                tabindex="0"
+                class="btn btn-ghost btn-xs btn-circle"
+              >
+                <.icon name="hero-question-mark-circle" class="size-5" />
+              </button>
+              <div
+                tabindex="0"
+                class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+              >
+                Siga estos pasos en orden. Primero defina accionistas, después acciones y pagos, y al final registre dividendos con base en la participación calculada.
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 grid gap-3 lg:grid-cols-4">
+            <div class="rounded-box border border-base-300 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <span class="badge badge-primary">1</span>
+                <span class="text-xs text-base-content/55">
+                  {length(@settings.shareholders)} registrados
+                </span>
+              </div>
+              <h3 class="mt-3 font-semibold">Crear accionistas</h3>
+              <p class="mt-2 text-sm leading-6 text-base-content/65">
+                Registre cada persona o entidad dueña de acciones.
+              </p>
+              <button
+                id="wizard-add-shareholder"
+                type="button"
+                class="btn btn-primary btn-sm mt-4 w-full"
+                data-modal-target="dividend_beneficiary_modal"
+              >
+                <.icon name="hero-user-plus" class="size-4" /> Agregar accionista
+              </button>
+            </div>
+
+            <div class="rounded-box border border-base-300 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <span class="badge badge-primary">2</span>
+                <span class="text-xs text-base-content/55">
+                  {length(@settings.capital_entries)} registros
+                </span>
+              </div>
+              <h3 class="mt-3 font-semibold">Registrar acciones</h3>
+              <p class="mt-2 text-sm leading-6 text-base-content/65">
+                Defina valor de acción, cantidad suscrita y abonos del accionista.
+              </p>
+              <button
+                id="wizard-add-capital"
+                type="button"
+                class="btn btn-primary btn-sm mt-4 w-full"
+                data-modal-target="capital_entry_modal"
+              >
+                <.icon name="hero-plus" class="size-4" /> Registrar capital
+              </button>
+            </div>
+
+            <div class="rounded-box border border-base-300 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <span class="badge badge-primary">3</span>
+                <span class="text-xs text-base-content/55">
+                  {Sipaex.Dividends.display_amount(@settings.capital_totals.receivable, @settings)}
+                </span>
+              </div>
+              <h3 class="mt-3 font-semibold">Revisar cuentas por cobrar</h3>
+              <p class="mt-2 text-sm leading-6 text-base-content/65">
+                Si el accionista no pagó todo, el saldo por cobrar se calcula automáticamente.
+              </p>
+              <button
+                id="wizard-review-capital"
+                type="button"
+                class="btn btn-outline btn-sm mt-4 w-full"
+                data-dividends-tab-target="capital"
+              >
+                <.icon name="hero-eye" class="size-4" /> Ver capital
+              </button>
+            </div>
+
+            <div class="rounded-box border border-base-300 p-4">
+              <div class="flex items-center justify-between gap-3">
+                <span class="badge badge-primary">4</span>
+                <span class="text-xs text-base-content/55">
+                  {length(@settings.entries)} movimientos
+                </span>
+              </div>
+              <h3 class="mt-3 font-semibold">Declarar dividendos</h3>
+              <p class="mt-2 text-sm leading-6 text-base-content/65">
+                Registre la declaratoria. La participación sale del capital accionario.
+              </p>
+              <button
+                id="wizard-add-dividend"
+                type="button"
+                class="btn btn-primary btn-sm mt-4 w-full"
+                data-modal-target="dividend_entry_modal"
+              >
+                <.icon name="hero-banknotes" class="size-4" /> Registrar dividendo
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-4 flex justify-end">
+            <button
+              id="wizard-review-summary"
+              type="button"
+              class="btn btn-ghost btn-sm"
+              data-dividends-tab-target="dashboard"
+            >
+              <.icon name="hero-chart-bar-square" class="size-4" /> Ver resumen
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="dividends-dashboard-panel"
+          data-dividends-panel="dashboard"
+          hidden={@active_dividends_tab != "dashboard"}
+        >
+          <div class="mb-4 flex items-center gap-2">
+            <h2 class="text-base font-semibold">Resumen</h2>
+            <div class="dropdown">
+              <button
+                id="dividends-dashboard-help"
+                type="button"
+                tabindex="0"
+                class="btn btn-ghost btn-xs btn-circle"
+              >
+                <.icon name="hero-question-mark-circle" class="size-5" />
+              </button>
+              <div
+                tabindex="0"
+                class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+              >
+                Consolida el mayor de capital accionario y el mayor de dividendos. Estos saldos se calculan desde accionistas, suscripciones, abonos y dividendos registrados.
+              </div>
+            </div>
+          </div>
+
+          <div class="grid gap-3 md:grid-cols-3">
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Capital accionario</p>
+              <p class="mt-2 text-2xl font-bold">
+                {Sipaex.Dividends.display_amount(@settings.capital_totals.capital, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">
+                Cuentas por cobrar accionistas
+              </p>
+              <p class="mt-2 text-2xl font-bold">
+                {Sipaex.Dividends.display_amount(@settings.capital_totals.receivable, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">
+                Dividendos por pagar
+              </p>
+              <p class="mt-2 text-2xl font-bold">
+                {Sipaex.Dividends.display_amount(@settings.totals.payable, @settings)}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-5 grid gap-5 xl:grid-cols-2">
+            <div class="overflow-x-auto">
+              <h2 class="mb-3 text-base font-semibold">Mayor capital accionario</h2>
+              <table id="shareholder-capital-major-table" class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Accionista</th>
+                    <th>Total capital acciones</th>
+                    <th>Abonos</th>
+                    <th>Cuentas por cobrar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={row <- @settings.capital_rows}>
+                    <td>{row.shareholder.name}</td>
+                    <td>{Sipaex.Dividends.display_amount(row.capital, @settings)}</td>
+                    <td>{Sipaex.Dividends.display_amount(row.payments, @settings)}</td>
+                    <td class="font-semibold">
+                      {Sipaex.Dividends.display_amount(row.receivable, @settings)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="overflow-x-auto">
+              <h2 class="mb-3 text-base font-semibold">Mayor dividendos</h2>
+              <table id="dividends-major-table" class="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Accionista</th>
+                    <th>Dividendos</th>
+                    <th>Abonos</th>
+                    <th>Por pagar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :for={row <- @settings.mayor_rows}>
+                    <td>{row.beneficiary.name}</td>
+                    <td>{Sipaex.Dividends.display_amount(row.dividends, @settings)}</td>
+                    <td>{Sipaex.Dividends.display_amount(row.payments, @settings)}</td>
+                    <td class="font-semibold">
+                      {Sipaex.Dividends.display_amount(row.payable, @settings)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="dividends-shareholders-panel"
+          data-dividends-panel="shareholders"
+          hidden={@active_dividends_tab != "shareholders"}
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <h2 class="text-base font-semibold">Accionistas</h2>
+              <div class="dropdown">
+                <button
+                  id="dividends-shareholders-help"
+                  type="button"
+                  tabindex="0"
+                  class="btn btn-ghost btn-xs btn-circle"
+                >
+                  <.icon name="hero-question-mark-circle" class="size-5" />
+                </button>
+                <div
+                  tabindex="0"
+                  class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+                >
+                  Aquí se registran las personas o entidades dueñas de acciones. Los accionistas se usan para capital accionario y para calcular dividendos.
+                </div>
+              </div>
+            </div>
+            <button
+              id="open-dividend-beneficiary-modal"
+              type="button"
+              class="btn btn-primary btn-sm"
+              data-modal-target="dividend_beneficiary_modal"
+            >
+              <.icon name="hero-plus" class="size-4" /> Agregar
+            </button>
+          </div>
+
+          <div class="mt-4 overflow-x-auto">
+            <table id="dividend-beneficiaries-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Accionista</th>
+                  <th>Identificación</th>
+                  <th>Email</th>
+                  <th>Teléfono</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={shareholder <- @settings.shareholders}>
+                  <td class="font-medium">{shareholder.name}</td>
+                  <td>{shareholder.identification || "Pendiente"}</td>
+                  <td>{shareholder.email || "Pendiente"}</td>
+                  <td>{shareholder.phone || "Pendiente"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          id="dividends-capital-panel"
+          data-dividends-panel="capital"
+          hidden={@active_dividends_tab != "capital"}
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <h2 class="text-base font-semibold">Capital accionario</h2>
+              <div class="dropdown">
+                <button
+                  id="dividends-capital-help"
+                  type="button"
+                  tabindex="0"
+                  class="btn btn-ghost btn-xs btn-circle"
+                >
+                  <.icon name="hero-question-mark-circle" class="size-5" />
+                </button>
+                <div
+                  tabindex="0"
+                  class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+                >
+                  Registra suscripciones de acciones: valor por acción, cantidad y abonos. Si el accionista no paga todo, la cuenta por cobrar se calcula automáticamente.
+                </div>
+              </div>
+            </div>
+            <button
+              id="open-capital-entry-modal"
+              type="button"
+              class="btn btn-primary btn-sm"
+              data-modal-target="capital_entry_modal"
+            >
+              <.icon name="hero-plus" class="size-4" /> Registrar
+            </button>
+          </div>
+
+          <div class="mt-4 overflow-x-auto">
+            <table id="shareholder-capital-entries-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Accionista</th>
+                  <th>Tipo valor</th>
+                  <th>Valor acción</th>
+                  <th>Cantidad</th>
+                  <th>Capital</th>
+                  <th>Abono</th>
+                  <th>Por cobrar</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={entry <- @settings.capital_entries}>
+                  <td>{entry.entry_date}</td>
+                  <td>{entry.beneficiary.name}</td>
+                  <td>{entry.share_type}</td>
+                  <td>{Sipaex.Dividends.display_amount(entry.share_value_usd, @settings)}</td>
+                  <td>{entry.quantity}</td>
+                  <td>{Sipaex.Dividends.display_amount(entry.capital_usd, @settings)}</td>
+                  <td>{Sipaex.Dividends.display_amount(entry.payment_usd, @settings)}</td>
+                  <td class="font-semibold">
+                    {Sipaex.Dividends.display_amount(entry.receivable_usd, @settings)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          id="dividends-entries-panel"
+          data-dividends-panel="entries"
+          hidden={@active_dividends_tab != "entries"}
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <h2 class="text-base font-semibold">Dividendos</h2>
+              <div class="dropdown">
+                <button
+                  id="dividends-entries-help"
+                  type="button"
+                  tabindex="0"
+                  class="btn btn-ghost btn-xs btn-circle"
+                >
+                  <.icon name="hero-question-mark-circle" class="size-5" />
+                </button>
+                <div
+                  tabindex="0"
+                  class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+                >
+                  Registra declaratorias y abonos de dividendos. La participación del accionista se calcula desde el capital accionario registrado.
+                </div>
+              </div>
+            </div>
+            <button
+              id="open-dividend-entry-modal"
+              type="button"
+              class="btn btn-primary btn-sm"
+              data-modal-target="dividend_entry_modal"
+            >
+              <.icon name="hero-plus" class="size-4" /> Registrar
+            </button>
+          </div>
+
+          <div class="mt-4 overflow-x-auto">
+            <table id="dividend-entries-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Accionista</th>
+                  <th>Declaratoria</th>
+                  <th>Participación</th>
+                  <th>Dividendos socio</th>
+                  <th>Abono</th>
+                  <th>Por pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={entry <- @settings.entries}>
+                  <td>{entry.entry_date}</td>
+                  <td>{entry.beneficiary.name}</td>
+                  <td>
+                    {Sipaex.Dividends.display_amount(entry.declaration_amount_usd, @settings)}
+                  </td>
+                  <td>{Sipaex.Dividends.display_percent(entry.participation_percent)}</td>
+                  <td>
+                    {Sipaex.Dividends.display_amount(entry.shareholder_dividend_usd, @settings)}
+                  </td>
+                  <td>{Sipaex.Dividends.display_amount(entry.payment_usd, @settings)}</td>
+                  <td class="font-semibold">
+                    {Sipaex.Dividends.display_amount(entry.payable_usd, @settings)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <.modal id="dividend_beneficiary_modal" title="Agregar accionista">
+      <.form
+        for={@beneficiary_form}
+        id="dividend-beneficiary-form"
+        action={~p"/dividends/beneficiaries"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <div class="sm:col-span-2">
+          <.input field={@beneficiary_form[:name]} label="Nombre del accionista" required />
+        </div>
+        <.input field={@beneficiary_form[:identification]} label="Identificación" />
+        <.input field={@beneficiary_form[:email]} type="email" label="Email" />
+        <.input field={@beneficiary_form[:phone]} label="Teléfono" />
+        <div class="sm:col-span-2">
+          <.input field={@beneficiary_form[:address]} label="Dirección" />
+        </div>
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="dividend-beneficiary-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+
+    <.modal id="capital_entry_modal" title="Registrar capital accionario">
+      <.form
+        for={@capital_entry_form}
+        id="capital-entry-form"
+        action={~p"/dividends/capital-entries"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <div class="sm:col-span-2">
+          <.input
+            field={@capital_entry_form[:beneficiary_id]}
+            type="select"
+            label="Accionista"
+            options={Enum.map(@settings.shareholders, &{&1.name, &1.id})}
+          />
+        </div>
+        <.input field={@capital_entry_form[:entry_date]} type="date" label="Fecha" required />
+        <.input field={@capital_entry_form[:share_type]} label="Tipo valor" required />
+        <.input
+          field={@capital_entry_form[:share_value_usd]}
+          type="number"
+          label="Valor acción"
+          min="0.01"
+          step="0.01"
+          required
+        />
+        <.input
+          field={@capital_entry_form[:quantity]}
+          type="number"
+          label="Cantidad suscripciones"
+          min="1"
+          step="1"
+          required
+        />
+        <.input
+          field={@capital_entry_form[:payment_usd]}
+          type="number"
+          label="Abonos"
+          min="0"
+          step="0.01"
+        />
+        <.input field={@capital_entry_form[:voucher]} label="Comprobante" />
+        <div class="sm:col-span-2">
+          <.input field={@capital_entry_form[:concept]} label="Concepto" required />
+        </div>
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="capital-entry-submit" type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </.form>
+    </.modal>
+
+    <.modal id="dividend_entry_modal" title="Registrar dividendo">
+      <.form
+        for={@entry_form}
+        id="dividend-entry-form"
+        action={~p"/dividends/entries"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <div class="sm:col-span-2">
+          <.input
+            field={@entry_form[:beneficiary_id]}
+            type="select"
+            label="Accionista"
+            options={Enum.map(@settings.shareholders, &{&1.name, &1.id})}
+          />
+        </div>
+        <.input field={@entry_form[:entry_date]} type="date" label="Fecha" required />
+        <.input
+          field={@entry_form[:declaration_amount_usd]}
+          type="number"
+          label="Monto declaratoria"
+          min="0"
+          step="0.01"
+          required
+        />
+        <.input
+          field={@entry_form[:payment_usd]}
+          type="number"
+          label="Abono dividendos"
+          min="0"
+          step="0.01"
+        />
+        <.input field={@entry_form[:voucher]} label="Comprobante" />
+        <div class="sm:col-span-2">
+          <.input field={@entry_form[:concept]} label="Concepto" required />
+        </div>
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="dividend-entry-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+  </section>
+</Layouts.app>

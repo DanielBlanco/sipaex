@@ -108,6 +108,158 @@ const setupLedgerTabs = () => {
   activate(tabContainer.dataset.activeLedgerTab || "dashboard")
 }
 
+const setupDividendsTabs = () => {
+  const tabContainer = document.getElementById("dividends-tabs")
+  const tabs = document.querySelectorAll("[data-dividends-tab]")
+  const panels = document.querySelectorAll("[data-dividends-panel]")
+
+  if (!tabContainer || !tabs.length || !panels.length) return
+
+  const activate = (name) => {
+    tabs.forEach((tab) => {
+      tab.classList.toggle("tab-active", tab.dataset.dividendsTab === name)
+    })
+
+    panels.forEach((panel) => {
+      panel.hidden = panel.dataset.dividendsPanel !== name
+    })
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => activate(tab.dataset.dividendsTab))
+  })
+
+  document.querySelectorAll("[data-dividends-tab-target]").forEach((button) => {
+    button.addEventListener("click", () => activate(button.dataset.dividendsTabTarget))
+  })
+
+  activate(tabContainer.dataset.activeDividendsTab || "wizard")
+}
+
+const setupExpensesExchangeRates = () => {
+  const pairs = [
+    ["expense_entry_currency_id", "expense_entry_exchange_rate"],
+    ["financial_entry_currency_id", "financial_entry_exchange_rate"],
+  ]
+
+  pairs.forEach(([selectId, inputId]) => {
+    const currencySelect = document.getElementById(selectId)
+    const exchangeRateInput = document.getElementById(inputId)
+
+    if (!currencySelect || !exchangeRateInput) return
+
+    const syncExchangeRate = () => {
+      const selectedOption = currencySelect.selectedOptions[0]
+      const exchangeRate = selectedOption?.dataset.exchangeRate
+
+      if (exchangeRate !== undefined) {
+        exchangeRateInput.value = exchangeRate
+      }
+    }
+
+    currencySelect.addEventListener("change", syncExchangeRate)
+    syncExchangeRate()
+  })
+}
+
+const setupExpensesTabs = () => {
+  const tabContainer = document.getElementById("expenses-tabs")
+  const tabs = document.querySelectorAll("[data-expenses-tab]")
+  const panels = document.querySelectorAll("[data-expenses-panel]")
+
+  if (!tabContainer || !tabs.length || !panels.length) return
+
+  const activate = (name) => {
+    tabs.forEach((tab) => {
+      tab.classList.toggle("tab-active", tab.dataset.expensesTab === name)
+    })
+
+    panels.forEach((panel) => {
+      panel.hidden = panel.dataset.expensesPanel !== name
+    })
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => activate(tab.dataset.expensesTab))
+  })
+
+  activate(tabContainer.dataset.activeExpensesTab || "dashboard")
+}
+
+const setupTaxesExchangeRates = () => {
+  const pairs = [
+    ["income_tax_entry_currency_id", "income_tax_entry_exchange_rate"],
+    ["vat_period_currency_id", "vat_period_exchange_rate"],
+  ]
+
+  pairs.forEach(([selectId, inputId]) => {
+    const currencySelect = document.getElementById(selectId)
+    const exchangeRateInput = document.getElementById(inputId)
+
+    if (!currencySelect || !exchangeRateInput) return
+
+    const syncExchangeRate = () => {
+      const selectedOption = currencySelect.selectedOptions[0]
+      const exchangeRate = selectedOption?.dataset.exchangeRate
+
+      if (exchangeRate !== undefined) {
+        exchangeRateInput.value = exchangeRate
+      }
+    }
+
+    currencySelect.addEventListener("change", syncExchangeRate)
+    syncExchangeRate()
+  })
+}
+
+const setupTaxesTabs = () => {
+  const tabContainer = document.getElementById("taxes-tabs")
+  const tabs = document.querySelectorAll("[data-taxes-tab]")
+  const panels = document.querySelectorAll("[data-taxes-panel]")
+
+  if (!tabContainer || !tabs.length || !panels.length) return
+
+  const activate = (name) => {
+    tabs.forEach((tab) => {
+      tab.classList.toggle("tab-active", tab.dataset.taxesTab === name)
+    })
+
+    panels.forEach((panel) => {
+      panel.hidden = panel.dataset.taxesPanel !== name
+    })
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => activate(tab.dataset.taxesTab))
+  })
+
+  activate(tabContainer.dataset.activeTaxesTab || "dashboard")
+}
+
+const setupCommerceTabs = () => {
+  const tabContainer = document.querySelector("[data-active-commerce-tab]")
+  const tabs = document.querySelectorAll("[data-commerce-tab]")
+  const panels = document.querySelectorAll("[data-commerce-panel]")
+
+  if (!tabContainer || !tabs.length || !panels.length) return
+
+  const activate = (name) => {
+    tabs.forEach((tab) => {
+      tab.classList.toggle("tab-active", tab.dataset.commerceTab === name)
+    })
+
+    panels.forEach((panel) => {
+      panel.hidden = panel.dataset.commercePanel !== name
+    })
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => activate(tab.dataset.commerceTab))
+  })
+
+  activate(tabContainer.dataset.activeCommerceTab || "dashboard")
+}
+
 const setupModalOpeners = () => {
   document.querySelectorAll("[data-modal-target]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -120,6 +272,12 @@ document.addEventListener("DOMContentLoaded", () => {
   setupLedgerExchangeRates()
   setupLedgerExchangeDifferenceRates()
   setupLedgerTabs()
+  setupDividendsTabs()
+  setupExpensesExchangeRates()
+  setupExpensesTabs()
+  setupTaxesExchangeRates()
+  setupTaxesTabs()
+  setupCommerceTabs()
   setupModalOpeners()
 })
 

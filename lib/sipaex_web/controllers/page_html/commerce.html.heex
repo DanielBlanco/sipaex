@@ -1,0 +1,320 @@
+<Layouts.app
+  flash={@flash}
+  active_module={if(@settings.entry_type == "purchase", do: "purchases", else: "sales")}
+  organization={@settings.organization}
+>
+  <section id={"#{@settings.entry_type}-page"} class="px-4 py-6 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold tracking-tight text-base-content">
+          {Sipaex.Commerce.module_title(@settings.entry_type)}
+        </h1>
+        <div class="dropdown dropdown-end">
+          <button
+            id={"#{@settings.entry_type}-info-button"}
+            type="button"
+            tabindex="0"
+            class="btn btn-ghost btn-xs btn-circle"
+          >
+            <.icon name="hero-information-circle" class="size-5" />
+          </button>
+          <div
+            tabindex="0"
+            class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
+          >
+            Registre documentos con monto exento, monto gravado e IVA. Estos datos alimentan la declaración IVA.
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1">
+        <button
+          id={"#{@settings.entry_type}-add-party-button"}
+          type="button"
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip={"Agregar #{String.downcase(Sipaex.Commerce.party_label(@settings.entry_type))}"}
+          aria-label={"Agregar #{Sipaex.Commerce.party_label(@settings.entry_type)}"}
+          data-modal-target="commerce_party_modal"
+        >
+          <.icon name="hero-user-plus" class="size-5" />
+        </button>
+        <button
+          id={"#{@settings.entry_type}-add-entry-button"}
+          type="button"
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Registrar documento"
+          aria-label="Registrar documento"
+          data-modal-target="commerce_entry_modal"
+        >
+          <.icon name="hero-document-plus" class="size-5" />
+        </button>
+        <a
+          id={"#{@settings.entry_type}-panel-link"}
+          href={~p"/dashboard"}
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Panel"
+          aria-label="Panel"
+        >
+          <.icon name="hero-squares-2x2" class="size-5" />
+        </a>
+      </div>
+    </div>
+
+    <div
+      id={"#{@settings.entry_type}-tabs"}
+      class="mt-6 rounded-box border border-base-300 bg-base-100 shadow-sm"
+      data-active-commerce-tab={@active_commerce_tab}
+    >
+      <div role="tablist" class="tabs tabs-border px-4 pt-3">
+        <button
+          id={"#{@settings.entry_type}-dashboard-tab"}
+          type="button"
+          role="tab"
+          class={["tab", @active_commerce_tab == "dashboard" && "tab-active"]}
+          data-commerce-tab="dashboard"
+        >
+          Dashboard
+        </button>
+        <button
+          id={"#{@settings.entry_type}-parties-tab"}
+          type="button"
+          role="tab"
+          class={["tab", @active_commerce_tab == "parties" && "tab-active"]}
+          data-commerce-tab="parties"
+        >
+          {Sipaex.Commerce.party_label(@settings.entry_type)}s
+        </button>
+        <button
+          id={"#{@settings.entry_type}-entries-tab"}
+          type="button"
+          role="tab"
+          class={["tab", @active_commerce_tab == "entries" && "tab-active"]}
+          data-commerce-tab="entries"
+        >
+          Documentos
+        </button>
+      </div>
+
+      <div class="border-t border-base-300 p-4 sm:p-5">
+        <div
+          id={"#{@settings.entry_type}-dashboard-panel"}
+          data-commerce-panel="dashboard"
+          hidden={@active_commerce_tab != "dashboard"}
+        >
+          <div class="grid gap-3 md:grid-cols-4">
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Monto exento</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Commerce.display_amount(@settings.totals.exempt, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Monto gravado</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Commerce.display_amount(@settings.totals.taxable, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">IVA</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Commerce.display_amount(@settings.totals.vat, @settings)}
+              </p>
+            </div>
+            <div class="rounded-box border border-base-300 p-4">
+              <p class="text-xs font-medium uppercase text-base-content/55">Total</p>
+              <p class="mt-2 text-xl font-bold">
+                {Sipaex.Commerce.display_amount(@settings.totals.total, @settings)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id={"#{@settings.entry_type}-parties-panel"}
+          data-commerce-panel="parties"
+          hidden={@active_commerce_tab != "parties"}
+        >
+          <div class="overflow-x-auto">
+            <table id={"#{@settings.entry_type}-parties-table"} class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Identificación</th>
+                  <th>Email</th>
+                  <th>Teléfono</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={party <- @settings.parties}>
+                  <td class="font-medium">{party.name}</td>
+                  <td>{party.identification}</td>
+                  <td>{party.email}</td>
+                  <td>{party.phone}</td>
+                </tr>
+                <tr class="hidden only:table-row">
+                  <td colspan="4" class="py-6 text-center text-base-content/55">
+                    No hay registros.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          id={"#{@settings.entry_type}-entries-panel"}
+          data-commerce-panel="entries"
+          hidden={@active_commerce_tab != "entries"}
+        >
+          <div class="overflow-x-auto">
+            <table id={"#{@settings.entry_type}-entries-table"} class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Documento</th>
+                  <th>{Sipaex.Commerce.party_label(@settings.entry_type)}</th>
+                  <th class="text-right">Gravado</th>
+                  <th class="text-right">IVA</th>
+                  <th class="text-right">Total</th>
+                  <th class="text-right">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={entry <- @settings.entries}>
+                  <td>{entry.entry_date}</td>
+                  <td>{entry.document_number}</td>
+                  <td>{entry.party.name}</td>
+                  <td class="text-right">
+                    {Sipaex.Commerce.display_native_amount(entry.taxable_amount_usd, entry)}
+                  </td>
+                  <td class="text-right">
+                    {Sipaex.Commerce.display_native_amount(entry.vat_amount_usd, entry)}
+                  </td>
+                  <td class="text-right">
+                    {Sipaex.Commerce.display_native_amount(entry.total_usd, entry)}
+                  </td>
+                  <td class="text-right font-medium">
+                    {Sipaex.Commerce.display_amount(entry.balance_usd, @settings)}
+                  </td>
+                </tr>
+                <tr class="hidden only:table-row">
+                  <td colspan="7" class="py-6 text-center text-base-content/55">
+                    No hay documentos.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <.modal
+      id="commerce_party_modal"
+      title={"Agregar #{Sipaex.Commerce.party_label(@settings.entry_type)}"}
+    >
+      <.form
+        for={@party_form}
+        id={"#{@settings.entry_type}-party-form"}
+        action={
+          if(@settings.entry_type == "purchase",
+            do: ~p"/purchases/parties",
+            else: ~p"/sales/parties"
+          )
+        }
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <.input field={@party_form[:name]} label="Nombre" required />
+        <.input field={@party_form[:identification]} label="Identificación" />
+        <.input field={@party_form[:email]} type="email" label="Email" />
+        <.input field={@party_form[:phone]} label="Teléfono" />
+        <div class="sm:col-span-2 flex justify-end">
+          <button
+            id={"#{@settings.entry_type}-party-submit"}
+            type="submit"
+            class="btn btn-primary"
+          >
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+
+    <.modal id="commerce_entry_modal" title="Registrar documento">
+      <.form
+        for={@entry_form}
+        id={"#{@settings.entry_type}-entry-form"}
+        action={
+          if(@settings.entry_type == "purchase",
+            do: ~p"/purchases/entries",
+            else: ~p"/sales/entries"
+          )
+        }
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <.input
+          field={@entry_form[:party_id]}
+          type="select"
+          label={Sipaex.Commerce.party_label(@settings.entry_type)}
+          options={Enum.map(@settings.parties, &{&1.name, &1.id})}
+        />
+        <.input
+          field={@entry_form[:currency_id]}
+          type="select"
+          label="Moneda"
+          options={Enum.map(@settings.currencies, &{"#{&1.code} - #{&1.name}", &1.id})}
+        />
+        <.input
+          field={@entry_form[:vat_rate_id]}
+          type="select"
+          label="IVA"
+          options={
+            Enum.map(
+              @settings.vat_rates,
+              &{"#{Sipaex.Taxes.display_rate(&1.rate)} - #{&1.description}", &1.id}
+            )
+          }
+        />
+        <.input field={@entry_form[:entry_date]} type="date" label="Fecha" required />
+        <.input field={@entry_form[:document_number]} label="N° documento" />
+        <.input
+          field={@entry_form[:exempt_amount]}
+          type="number"
+          label="Monto exento"
+          min="0"
+          step="0.01"
+        />
+        <.input
+          field={@entry_form[:taxable_amount]}
+          type="number"
+          label="Monto gravado"
+          min="0"
+          step="0.01"
+          required
+        />
+        <.input field={@entry_form[:payment]} type="number" label="Abono" min="0" step="0.01" />
+        <.input
+          field={@entry_form[:exchange_rate]}
+          type="number"
+          label="Tipo de cambio"
+          min="0.00000001"
+          step="0.00000001"
+        />
+        <div class="sm:col-span-2">
+          <.input field={@entry_form[:concept]} label="Detalle" required />
+        </div>
+        <div class="sm:col-span-2 flex justify-end">
+          <button
+            id={"#{@settings.entry_type}-entry-submit"}
+            type="submit"
+            class="btn btn-primary"
+          >
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+  </section>
+</Layouts.app>
