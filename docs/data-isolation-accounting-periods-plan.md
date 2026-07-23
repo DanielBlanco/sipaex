@@ -135,11 +135,13 @@ Criterios de aceptacion:
 
 ## Fase 6: Libro Diario y Cierre
 
-Estado: pendiente.
+Estado: en progreso.
 
-- [ ] Crear `journal_entries` y `journal_lines`.
-- [ ] Relacionar documentos operativos con asientos contables via `source_type/source_id`.
-- [ ] Distinguir asientos `operational`, `adjustment`, `closing`, `reversal`.
+- [x] Crear `journal_entries` y `journal_lines`.
+- [x] Relacionar documentos operativos con asientos contables via `source_type/source_id`.
+- [x] Distinguir asientos `operational`, `adjustment`, `closing`, `reversal`.
+- [x] Validar asientos balanceados y vinculados a un periodo abierto de la organizacion.
+- [x] Agregar balance de comprobacion inicial por cuenta sobre `journal_lines`.
 - [ ] Implementar cierre mensual.
 - [ ] Implementar cierre anual de cuentas temporales y traslado de resultado acumulado.
 
