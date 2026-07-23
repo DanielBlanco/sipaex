@@ -17,6 +17,7 @@ defmodule Sipaex.Dividends.CapitalEntry do
     field :concept, :string
 
     belongs_to :beneficiary, Sipaex.Dividends.Beneficiary
+    belongs_to :organization, Sipaex.Organizations.Organization
 
     timestamps(type: :utc_datetime)
   end
@@ -25,6 +26,7 @@ defmodule Sipaex.Dividends.CapitalEntry do
     entry
     |> cast(attrs, [
       :beneficiary_id,
+      :organization_id,
       :entry_date,
       :share_type,
       :share_value_usd,
@@ -37,6 +39,7 @@ defmodule Sipaex.Dividends.CapitalEntry do
     ])
     |> validate_required([
       :beneficiary_id,
+      :organization_id,
       :entry_date,
       :share_type,
       :share_value_usd,

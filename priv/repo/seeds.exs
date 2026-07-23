@@ -1,4 +1,5 @@
 alias Sipaex.Accounts.User
+alias Sipaex.Accounts
 alias Sipaex.Common.Currency
 alias Sipaex.Common.ExchangeRate
 alias Sipaex.Organizations.Organization
@@ -124,16 +125,11 @@ for {quote_code, rate} <- exchange_rates do
   Mix.shell().info("Seeded GLOBAL exchange rate: USD -> #{quote_code} = #{rate}")
 end
 
-password_hash =
-  :sha256
-  |> :crypto.hash("Sorata8!")
-  |> Base.encode16(case: :lower)
-
 user_attrs = %{
   username: "daniel",
   name: "Daniel Blanco",
   email: "daniel.blancorojas@gmail.com",
-  password_hash: password_hash,
+  password_hash: Accounts.hash_password("Sorata8!"),
   role: "admin",
   organization_id: organization.id,
   activated_at: now

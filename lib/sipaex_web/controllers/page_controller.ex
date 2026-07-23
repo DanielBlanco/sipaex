@@ -3,7 +3,10 @@ defmodule SipaexWeb.PageController do
 
   import Ecto.Query
 
+  plug :require_authenticated_user when action not in [:home, :login]
+
   alias Sipaex.Accounts.User
+  alias Sipaex.Accounts
   alias Sipaex.Bank
   alias Sipaex.Commerce
   alias Sipaex.Common.Currencies
@@ -21,12 +24,27 @@ defmodule SipaexWeb.PageController do
     render(conn, :home, form: Phoenix.Component.to_form(%{}, as: :session))
   end
 
+  def login(conn, %{"session" => session_params}) do
+    email = Map.get(session_params, "email", "")
+    password = Map.get(session_params, "password", "")
+
+    case Accounts.authenticate_user(email, password) do
+      {:ok, user} ->
+        conn
+        |> put_session(:user_id, user.id)
+        |> configure_session(renew: true)
+        |> put_flash(:info, "Sesión iniciada.")
+        |> redirect(to: ~p"/dashboard")
+
+      {:error, :invalid_credentials} ->
+        conn
+        |> put_flash(:error, "Correo o contraseña inválidos.")
+        |> redirect(to: ~p"/")
+    end
+  end
+
   def dashboard(conn, _params) do
-    organization =
-      Organization
-      |> order_by([organization], asc: organization.inserted_at)
-      |> preload(:base_currency)
-      |> Repo.one()
+    organization = current_organization(conn)
 
     exchange_rates =
       ExchangeRate
@@ -39,9 +57,18 @@ defmodule SipaexWeb.PageController do
     dashboard = %{
       organization: organization,
       currencies_count: Repo.aggregate(Currency, :count),
-      organization_currencies_count: Repo.aggregate(OrganizationCurrency, :count),
+      organization_currencies_count:
+        OrganizationCurrency
+        |> where(
+          [organization_currency],
+          organization_currency.organization_id == ^organization.id
+        )
+        |> Repo.aggregate(:count),
       exchange_rates_count: Repo.aggregate(ExchangeRate, :count),
-      users_count: Repo.aggregate(User, :count),
+      users_count:
+        User
+        |> where([user], user.organization_id == ^organization.id)
+        |> Repo.aggregate(:count),
       exchange_rates: exchange_rates
     }
 
@@ -80,6 +107,20 @@ defmodule SipaexWeb.PageController do
     create_commerce_party(conn, "purchase", party_params)
   end
 
+  def create_product(conn, %{"product" => product_params}) do
+    case Commerce.create_product(product_params, current_organization(conn)) do
+      {:ok, product} ->
+        conn
+        |> put_flash(:info, "Producto #{product.code} creado correctamente.")
+        |> redirect(to: ~p"/purchases?tab=products")
+
+      {:error, _changeset} ->
+        conn
+        |> put_flash(:error, "Revise los datos del producto.")
+        |> redirect(to: ~p"/purchases?tab=products")
+    end
+  end
+
   def create_sale_party(conn, %{"party" => party_params}) do
     create_commerce_party(conn, "sale", party_params)
   end
@@ -93,7 +134,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_income_tax_entry(conn, %{"income_tax_entry" => entry_params}) do
-    case Taxes.create_income_tax_entry(entry_params) do
+    case Taxes.create_income_tax_entry(entry_params, current_organization(conn)) do
       {:ok, _entry} ->
         conn
         |> put_flash(:info, "Impuesto de renta registrado correctamente.")
@@ -107,7 +148,7 @@ defmodule SipaexWeb.PageController do
   end
 
   defp create_commerce_party(conn, entry_type, party_params) do
-    case Commerce.create_party(entry_type, party_params) do
+    case Commerce.create_party(entry_type, party_params, current_organization(conn)) do
       {:ok, party} ->
         conn
         |> put_flash(
@@ -124,7 +165,7 @@ defmodule SipaexWeb.PageController do
   end
 
   defp create_commerce_entry(conn, entry_type, entry_params) do
-    case Commerce.create_entry(entry_type, entry_params) do
+    case Commerce.create_entry(entry_type, entry_params, current_organization(conn)) do
       {:ok, _entry} ->
         conn
         |> put_flash(:info, "#{Commerce.module_title(entry_type)} registrado correctamente.")
@@ -138,7 +179,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_vat_period(conn, %{"vat_period" => period_params}) do
-    case Taxes.create_vat_period(period_params) do
+    case Taxes.create_vat_period(period_params, current_organization(conn)) do
       {:ok, _period} ->
         conn
         |> put_flash(:info, "IVA registrado correctamente.")
@@ -152,7 +193,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_vat_rate(conn, %{"vat_rate" => rate_params}) do
-    case Taxes.create_vat_rate(rate_params) do
+    case Taxes.create_vat_rate(rate_params, current_organization(conn)) do
       {:ok, _rate} ->
         conn
         |> put_flash(:info, "Tarifa IVA agregada correctamente.")
@@ -166,7 +207,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def toggle_vat_rate(conn, %{"id" => id}) do
-    case Taxes.toggle_vat_rate(id) do
+    case Taxes.toggle_vat_rate(id, current_organization(conn)) do
       {:ok, rate} ->
         conn
         |> put_flash(:info, "Tarifa IVA #{if(rate.active, do: "activada", else: "desactivada")}.")
@@ -185,7 +226,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_expense_provider(conn, %{"provider" => provider_params}) do
-    case Expenses.create_provider(provider_params) do
+    case Expenses.create_provider(provider_params, current_organization(conn)) do
       {:ok, provider} ->
         conn
         |> put_flash(:info, "Proveedor #{provider.name} creado correctamente.")
@@ -199,7 +240,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_expense_entry(conn, %{"expense_entry" => entry_params}) do
-    case Expenses.create_entry(entry_params) do
+    case Expenses.create_entry(entry_params, current_organization(conn)) do
       {:ok, _entry} ->
         conn
         |> put_flash(:info, "Gasto registrado correctamente.")
@@ -213,7 +254,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_financial_expense_entry(conn, %{"financial_entry" => entry_params}) do
-    case Expenses.create_financial_entry(entry_params) do
+    case Expenses.create_financial_entry(entry_params, current_organization(conn)) do
       {:ok, _entry} ->
         conn
         |> put_flash(:info, "Gasto financiero registrado correctamente.")
@@ -227,7 +268,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_dividend_beneficiary(conn, %{"beneficiary" => beneficiary_params}) do
-    case Dividends.create_beneficiary(beneficiary_params) do
+    case Dividends.create_beneficiary(beneficiary_params, current_organization(conn)) do
       {:ok, _beneficiary} ->
         conn
         |> put_flash(:info, "Beneficiario de dividendos creado correctamente.")
@@ -241,7 +282,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_shareholder_capital_entry(conn, %{"capital_entry" => capital_entry_params}) do
-    case Dividends.create_capital_entry(capital_entry_params) do
+    case Dividends.create_capital_entry(capital_entry_params, current_organization(conn)) do
       {:ok, _entry} ->
         conn
         |> put_flash(:info, "Capital accionario registrado correctamente.")
@@ -255,7 +296,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_dividend_entry(conn, %{"dividend_entry" => entry_params}) do
-    case Dividends.create_entry(entry_params) do
+    case Dividends.create_entry(entry_params, current_organization(conn)) do
       {:ok, _entry} ->
         conn
         |> put_flash(:info, "Movimiento de dividendos registrado correctamente.")
@@ -269,7 +310,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_petty_cash(conn, %{"petty_cash" => petty_cash_params}) do
-    case Bank.create_petty_cash(petty_cash_params) do
+    case Bank.create_petty_cash(petty_cash_params, current_organization(conn)) do
       {:ok, _transaction} ->
         conn
         |> put_flash(:info, "Entrada de caja chica registrada correctamente.")
@@ -283,7 +324,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def delete_petty_cash(conn, %{"id" => id}) do
-    case Bank.delete_petty_cash(id) do
+    case Bank.delete_petty_cash(id, current_organization(conn)) do
       {:ok, _transaction} ->
         conn
         |> put_flash(:info, "Entrada de caja chica eliminada.")
@@ -297,7 +338,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_ledger_account(conn, %{"bank_account" => bank_account_params}) do
-    case Ledger.create_bank_account(bank_account_params) do
+    case Ledger.create_bank_account(bank_account_params, current_organization(conn)) do
       {:ok, _bank_account} ->
         conn
         |> put_flash(:info, "Cuenta bancaria creada correctamente.")
@@ -311,7 +352,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_ledger_transaction(conn, %{"ledger_transaction" => transaction_params}) do
-    case Ledger.create_transaction(transaction_params) do
+    case Ledger.create_transaction(transaction_params, current_organization(conn)) do
       {:ok, _transaction} ->
         conn
         |> put_flash(:info, "Movimiento registrado correctamente.")
@@ -327,7 +368,7 @@ defmodule SipaexWeb.PageController do
   def create_ledger_exchange_difference(conn, %{
         "exchange_difference" => exchange_difference_params
       }) do
-    case Ledger.create_exchange_difference(exchange_difference_params) do
+    case Ledger.create_exchange_difference(exchange_difference_params, current_organization(conn)) do
       {:ok, _exchange_difference} ->
         conn
         |> put_flash(:info, "Diferencial cambiario registrado correctamente.")
@@ -345,7 +386,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def create_currency(conn, %{"currency" => currency_params}) do
-    case Currencies.create_currency(currency_params) do
+    case Currencies.create_currency(currency_params, current_organization(conn)) do
       {:ok, %{currency: currency}} ->
         conn
         |> put_flash(:info, "Moneda #{currency.code} agregada correctamente.")
@@ -359,7 +400,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def set_default_currency(conn, %{"organization_currency" => %{"currency_id" => currency_id}}) do
-    case Currencies.set_default_currency(currency_id) do
+    case Currencies.set_default_currency(currency_id, current_organization(conn)) do
       {:ok, _result} ->
         conn
         |> put_flash(:info, "Moneda predeterminada actualizada.")
@@ -373,7 +414,7 @@ defmodule SipaexWeb.PageController do
   end
 
   def delete_currency(conn, %{"currency_id" => currency_id}) do
-    case Currencies.remove_currency(currency_id) do
+    case Currencies.remove_currency(currency_id, current_organization(conn)) do
       {:ok, _result} ->
         conn
         |> put_flash(:info, "Moneda removida de la organización.")
@@ -392,7 +433,7 @@ defmodule SipaexWeb.PageController do
   end
 
   defp render_currencies(conn) do
-    settings = Currencies.currency_settings()
+    settings = Currencies.currency_settings(current_organization(conn))
 
     currency_form =
       Phoenix.Component.to_form(
@@ -402,7 +443,7 @@ defmodule SipaexWeb.PageController do
 
     default_form =
       Phoenix.Component.to_form(
-        %{"currency_id" => settings.organization && settings.organization.base_currency_id},
+        %{"currency_id" => settings.organization.base_currency_id},
         as: :organization_currency
       )
 
@@ -414,7 +455,7 @@ defmodule SipaexWeb.PageController do
   end
 
   defp render_bank(conn) do
-    summary = Bank.summary()
+    summary = Bank.summary(current_organization(conn))
     default_currency = List.first(summary.petty_cash_currencies)
 
     petty_cash_form =
@@ -432,7 +473,7 @@ defmodule SipaexWeb.PageController do
   end
 
   defp render_commerce(conn, entry_type, active_tab) do
-    settings = Commerce.settings(entry_type)
+    settings = Commerce.settings(entry_type, current_organization(conn))
     active_tab = active_commerce_tab(active_tab)
     default_party = List.first(settings.parties)
     default_currency = List.first(settings.currencies)
@@ -451,6 +492,18 @@ defmodule SipaexWeb.PageController do
       Phoenix.Component.to_form(
         %{"name" => "", "identification" => "", "email" => "", "phone" => ""},
         as: :party
+      )
+
+    product_form =
+      Phoenix.Component.to_form(
+        %{
+          "code" => "",
+          "name" => "",
+          "product_type" => "raw_material",
+          "unit" => "unidad",
+          "description" => ""
+        },
+        as: :product
       )
 
     entry_form =
@@ -473,13 +526,14 @@ defmodule SipaexWeb.PageController do
     render(conn, :commerce,
       settings: settings,
       party_form: party_form,
+      product_form: product_form,
       entry_form: entry_form,
       active_commerce_tab: active_tab
     )
   end
 
   defp render_expenses(conn, active_tab) do
-    settings = Expenses.settings()
+    settings = Expenses.settings(current_organization(conn))
     active_tab = active_expenses_tab(active_tab)
     default_provider = List.first(settings.providers)
 
@@ -567,11 +621,12 @@ defmodule SipaexWeb.PageController do
   end
 
   defp render_taxes(conn, active_tab) do
-    settings = Taxes.settings()
+    organization = current_organization(conn)
+    settings = Taxes.settings(organization)
     active_tab = active_taxes_tab(active_tab)
     default_currency = List.first(settings.currencies)
     today = Date.utc_today()
-    vat_source_totals = Taxes.vat_source_totals(today.month, today.year)
+    vat_source_totals = Taxes.vat_source_totals(today.month, today.year, organization)
 
     default_exchange_rate =
       if default_currency do
@@ -631,7 +686,7 @@ defmodule SipaexWeb.PageController do
   end
 
   defp render_dividends(conn, active_tab) do
-    settings = Dividends.settings()
+    settings = Dividends.settings(current_organization(conn))
     active_tab = active_dividends_tab(active_tab)
     default_beneficiary = List.first(settings.beneficiaries)
 
@@ -685,7 +740,7 @@ defmodule SipaexWeb.PageController do
   end
 
   defp render_ledger(conn, active_tab) do
-    settings = Ledger.ledger_settings()
+    settings = Ledger.ledger_settings(current_organization(conn))
     active_tab = active_ledger_tab(active_tab)
 
     bank_account_form =
@@ -765,11 +820,30 @@ defmodule SipaexWeb.PageController do
 
   defp active_expenses_tab(_tab), do: "dashboard"
 
-  defp active_commerce_tab(tab) when tab in ["dashboard", "parties", "entries"], do: tab
+  defp active_commerce_tab(tab) when tab in ["dashboard", "parties", "products", "entries"],
+    do: tab
 
   defp active_commerce_tab(_tab), do: "dashboard"
 
   defp active_taxes_tab(tab) when tab in ["dashboard", "vat-rates", "income", "vat"], do: tab
 
   defp active_taxes_tab(_tab), do: "dashboard"
+
+  defp require_authenticated_user(conn, _opts) do
+    with user_id when not is_nil(user_id) <- get_session(conn, :user_id),
+         %User{organization: %Organization{} = organization} = user <-
+           Accounts.get_user_with_organization(user_id) do
+      conn
+      |> assign(:current_user, user)
+      |> assign(:current_organization, organization)
+    else
+      _ ->
+        conn
+        |> put_flash(:error, "Debe iniciar sesión.")
+        |> redirect(to: ~p"/")
+        |> halt()
+    end
+  end
+
+  defp current_organization(conn), do: conn.assigns.current_organization
 end

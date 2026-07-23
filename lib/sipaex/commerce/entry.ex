@@ -22,8 +22,11 @@ defmodule Sipaex.Commerce.Entry do
     field :concept, :string
 
     belongs_to :party, Sipaex.Commerce.Party
+    belongs_to :organization, Sipaex.Organizations.Organization
     belongs_to :currency, Sipaex.Common.Currency
     belongs_to :vat_rate_config, Sipaex.Taxes.VatRate, foreign_key: :vat_rate_id
+
+    has_many :lines, Sipaex.Commerce.EntryLine
 
     timestamps(type: :utc_datetime)
   end
@@ -32,6 +35,7 @@ defmodule Sipaex.Commerce.Entry do
     entry
     |> cast(attrs, [
       :party_id,
+      :organization_id,
       :currency_id,
       :vat_rate_id,
       :entry_type,
@@ -49,6 +53,7 @@ defmodule Sipaex.Commerce.Entry do
     ])
     |> validate_required([
       :party_id,
+      :organization_id,
       :currency_id,
       :vat_rate_id,
       :entry_type,

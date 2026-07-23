@@ -5,6 +5,7 @@ defmodule Sipaex.Taxes do
 
   import Ecto.Query
 
+  alias Sipaex.Accounting
   alias Sipaex.Common.Currencies
   alias Sipaex.Common.Currency
   alias Sipaex.Common.ExchangeRate
@@ -26,9 +27,9 @@ defmodule Sipaex.Taxes do
     {"CR", "General 13%", "0.13", "Tarifa general de Costa Rica."}
   ]
 
-  def settings do
-    organization = first_organization!()
-    currency_settings = Currencies.currency_settings()
+  def settings(organization \\ first_organization!()) do
+    organization = Repo.preload(organization, :base_currency)
+    currency_settings = Currencies.currency_settings(organization)
     ensure_default_vat_rates!(organization)
 
     vat_rates =
@@ -64,12 +65,11 @@ defmodule Sipaex.Taxes do
       income_tax_totals: income_tax_totals,
       vat_totals: vat_totals,
       totals: totals(income_tax_totals, vat_totals),
-      expense_tax_credit: Expenses.settings().ordinary_totals.tax
+      expense_tax_credit: Expenses.settings(organization).ordinary_totals.tax
     }
   end
 
-  def create_vat_rate(attrs) do
-    organization = first_organization!()
+  def create_vat_rate(attrs, organization \\ first_organization!()) do
     rate = percentage_to_rate(attrs["rate"])
     description = attrs["description"] || ""
 
@@ -85,85 +85,106 @@ defmodule Sipaex.Taxes do
     |> Repo.insert()
   end
 
-  def toggle_vat_rate(id) do
-    rate = Repo.get!(VatRate, id)
+  def toggle_vat_rate(id, organization \\ first_organization!()) do
+    VatRate
+    |> where([rate], rate.id == ^id)
+    |> where([rate], rate.organization_id == ^organization.id)
+    |> Repo.one()
+    |> case do
+      nil ->
+        {:error, :invalid_vat_rate}
 
-    if exempt_vat_rate?(rate) and rate.active do
-      {:error, :exempt_vat_required}
-    else
-      rate
-      |> VatRate.changeset(%{active: !rate.active})
-      |> Repo.update()
+      rate ->
+        if exempt_vat_rate?(rate) and rate.active do
+          {:error, :exempt_vat_required}
+        else
+          rate
+          |> VatRate.changeset(%{active: !rate.active})
+          |> Repo.update()
+        end
     end
   end
 
-  def create_income_tax_entry(attrs) do
-    organization = first_organization!()
-    currency = Repo.get!(Currency, attrs["currency_id"])
-    exchange_rate = exchange_rate_for(currency, attrs["exchange_rate"])
-    tax_amount = decimal_from_param(attrs["tax_amount"])
-    payment = decimal_from_param(attrs["payment"] || "0")
+  def create_income_tax_entry(attrs, organization \\ first_organization!()) do
+    with %Currency{} = currency <-
+           Currencies.currency_for_organization(attrs["currency_id"], organization),
+         entry_date = date_from_param(attrs["entry_date"]),
+         :ok <- Accounting.ensure_writable_period(organization, entry_date) do
+      exchange_rate = exchange_rate_for(currency, attrs["exchange_rate"])
+      tax_amount = decimal_from_param(attrs["tax_amount"])
+      payment = decimal_from_param(attrs["payment"] || "0")
 
-    attrs =
-      attrs
-      |> Map.put("organization_id", organization.id)
-      |> Map.put("exchange_rate", exchange_rate)
-      |> Map.put("tax_amount_usd", amount_to_usd(tax_amount, currency, exchange_rate))
-      |> Map.put("payment_usd", amount_to_usd(payment, currency, exchange_rate))
-      |> Map.put(
-        "payable_usd",
-        amount_to_usd(Decimal.sub(tax_amount, payment), currency, exchange_rate)
-      )
+      attrs =
+        attrs
+        |> Map.put("organization_id", organization.id)
+        |> Map.put("exchange_rate", exchange_rate)
+        |> Map.put("tax_amount_usd", amount_to_usd(tax_amount, currency, exchange_rate))
+        |> Map.put("payment_usd", amount_to_usd(payment, currency, exchange_rate))
+        |> Map.put(
+          "payable_usd",
+          amount_to_usd(Decimal.sub(tax_amount, payment), currency, exchange_rate)
+        )
 
-    %IncomeTaxEntry{}
-    |> IncomeTaxEntry.changeset(attrs)
-    |> Repo.insert()
+      %IncomeTaxEntry{}
+      |> IncomeTaxEntry.changeset(attrs)
+      |> Repo.insert()
+    else
+      nil -> {:error, :invalid_currency}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  def create_vat_period(attrs) do
-    organization = first_organization!()
-    currency = Repo.get!(Currency, attrs["currency_id"])
-    exchange_rate = exchange_rate_for(currency, attrs["exchange_rate"])
+  def create_vat_period(attrs, organization \\ first_organization!()) do
     month = integer_from_param(attrs["period_month"])
     year = integer_from_param(attrs["period_year"])
-    source_totals = vat_source_totals(month, year)
-    payment = decimal_from_param(attrs["payment"] || "0")
+    period_date = Date.new!(year, month, 1)
 
-    net_vat =
-      source_totals.debit_sales
-      |> Decimal.sub(source_totals.credit_purchases)
-      |> Decimal.sub(source_totals.credit_expenses)
+    with %Currency{} = currency <-
+           Currencies.currency_for_organization(attrs["currency_id"], organization),
+         :ok <- Accounting.ensure_writable_period(organization, period_date) do
+      exchange_rate = exchange_rate_for(currency, attrs["exchange_rate"])
+      source_totals = vat_source_totals(month, year, organization)
+      payment = decimal_from_param(attrs["payment"] || "0")
 
-    attrs =
-      attrs
-      |> Map.put("organization_id", organization.id)
-      |> Map.put("period_month", month)
-      |> Map.put("period_year", year)
-      |> Map.put("exchange_rate", exchange_rate)
-      |> Map.put("debit_sales_usd", source_totals.debit_sales)
-      |> Map.put("credit_purchases_usd", source_totals.credit_purchases)
-      |> Map.put("credit_expenses_usd", source_totals.credit_expenses)
-      |> Map.put("net_vat_usd", net_vat)
-      |> Map.put("payment_usd", amount_to_usd(payment, currency, exchange_rate))
-      |> Map.put(
-        "payable_usd",
-        Decimal.sub(net_vat, amount_to_usd(payment, currency, exchange_rate))
-      )
+      net_vat =
+        source_totals.debit_sales
+        |> Decimal.sub(source_totals.credit_purchases)
+        |> Decimal.sub(source_totals.credit_expenses)
 
-    %VatPeriod{}
-    |> VatPeriod.changeset(attrs)
-    |> Repo.insert()
+      attrs =
+        attrs
+        |> Map.put("organization_id", organization.id)
+        |> Map.put("period_month", month)
+        |> Map.put("period_year", year)
+        |> Map.put("exchange_rate", exchange_rate)
+        |> Map.put("debit_sales_usd", source_totals.debit_sales)
+        |> Map.put("credit_purchases_usd", source_totals.credit_purchases)
+        |> Map.put("credit_expenses_usd", source_totals.credit_expenses)
+        |> Map.put("net_vat_usd", net_vat)
+        |> Map.put("payment_usd", amount_to_usd(payment, currency, exchange_rate))
+        |> Map.put(
+          "payable_usd",
+          Decimal.sub(net_vat, amount_to_usd(payment, currency, exchange_rate))
+        )
+
+      %VatPeriod{}
+      |> VatPeriod.changeset(attrs)
+      |> Repo.insert()
+    else
+      nil -> {:error, :invalid_currency}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  def summary_totals do
-    settings().totals
+  def summary_totals(organization \\ first_organization!()) do
+    settings(organization).totals
   end
 
-  def vat_source_totals(month, year) do
+  def vat_source_totals(month, year, organization \\ first_organization!()) do
     %{
-      debit_sales: Commerce.vat_total("sale", month, year),
-      credit_purchases: Commerce.vat_total("purchase", month, year),
-      credit_expenses: Expenses.vat_total(month, year)
+      debit_sales: Commerce.vat_total("sale", month, year, organization),
+      credit_purchases: Commerce.vat_total("purchase", month, year, organization),
+      credit_expenses: Expenses.vat_total(month, year, organization)
     }
   end
 
@@ -333,4 +354,7 @@ defmodule Sipaex.Taxes do
 
   defp integer_from_param(value) when is_integer(value), do: value
   defp integer_from_param(value) when is_binary(value), do: String.to_integer(value)
+
+  defp date_from_param(%Date{} = value), do: value
+  defp date_from_param(value) when is_binary(value), do: Date.from_iso8601!(value)
 end

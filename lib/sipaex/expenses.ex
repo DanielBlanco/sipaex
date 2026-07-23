@@ -5,6 +5,7 @@ defmodule Sipaex.Expenses do
 
   import Ecto.Query
 
+  alias Sipaex.Accounting
   alias Sipaex.Common.Currencies
   alias Sipaex.Common.Currency
   alias Sipaex.Common.ExchangeRate
@@ -25,9 +26,9 @@ defmodule Sipaex.Expenses do
     {"13%", "0.13"}
   ]
 
-  def settings do
-    organization = first_organization!()
-    currency_settings = Currencies.currency_settings()
+  def settings(organization \\ first_organization!()) do
+    organization = Repo.preload(organization, :base_currency)
+    currency_settings = Currencies.currency_settings(organization)
 
     providers =
       Provider
@@ -74,118 +75,134 @@ defmodule Sipaex.Expenses do
     }
   end
 
-  def create_provider(attrs) do
-    organization = first_organization!()
-
+  def create_provider(attrs, organization \\ first_organization!()) do
     %Provider{}
     |> Provider.changeset(Map.put(attrs, "organization_id", organization.id))
     |> Repo.insert()
   end
 
-  def create_entry(attrs) do
-    provider = Repo.get!(Provider, attrs["provider_id"])
-    currency = Repo.get!(Currency, attrs["currency_id"])
-    exchange_rate = exchange_rate_for(currency, attrs["exchange_rate"])
+  def create_entry(attrs, organization \\ first_organization!()) do
+    with %Provider{} = provider <-
+           get_provider_for_organization(attrs["provider_id"], organization),
+         %Currency{} = currency <-
+           Currencies.currency_for_organization(attrs["currency_id"], organization),
+         entry_date = date_from_param(attrs["entry_date"]),
+         :ok <- Accounting.ensure_writable_period(organization, entry_date) do
+      exchange_rate = exchange_rate_for(currency, attrs["exchange_rate"])
 
-    exempt_amount = decimal_from_param(attrs["exempt_amount"])
-    taxable_amount = decimal_from_param(attrs["taxable_amount"])
-    tax_rate = decimal_from_param(attrs["tax_rate"] || "0")
-    credit_note = decimal_from_param(attrs["credit_note"] || "0")
-    debit_note = decimal_from_param(attrs["debit_note"] || "0")
-    payment = decimal_from_param(attrs["payment"] || "0")
-    tax_amount = Decimal.mult(taxable_amount, tax_rate)
+      exempt_amount = decimal_from_param(attrs["exempt_amount"])
+      taxable_amount = decimal_from_param(attrs["taxable_amount"])
+      tax_rate = decimal_from_param(attrs["tax_rate"] || "0")
+      credit_note = decimal_from_param(attrs["credit_note"] || "0")
+      debit_note = decimal_from_param(attrs["debit_note"] || "0")
+      payment = decimal_from_param(attrs["payment"] || "0")
+      tax_amount = Decimal.mult(taxable_amount, tax_rate)
 
-    total =
-      exempt_amount
-      |> Decimal.add(taxable_amount)
-      |> Decimal.add(tax_amount)
-      |> Decimal.sub(credit_note)
-      |> Decimal.add(debit_note)
+      total =
+        exempt_amount
+        |> Decimal.add(taxable_amount)
+        |> Decimal.add(tax_amount)
+        |> Decimal.sub(credit_note)
+        |> Decimal.add(debit_note)
 
-    attrs =
-      attrs
-      |> Map.put("category", provider.category)
-      |> Map.put("exchange_rate", exchange_rate)
-      |> Map.put("exempt_amount_usd", amount_to_usd(exempt_amount, currency, exchange_rate))
-      |> Map.put("taxable_amount_usd", amount_to_usd(taxable_amount, currency, exchange_rate))
-      |> Map.put("tax_rate", tax_rate)
-      |> Map.put("tax_amount_usd", amount_to_usd(tax_amount, currency, exchange_rate))
-      |> Map.put("credit_note_usd", amount_to_usd(credit_note, currency, exchange_rate))
-      |> Map.put("debit_note_usd", amount_to_usd(debit_note, currency, exchange_rate))
-      |> Map.put("total_usd", amount_to_usd(total, currency, exchange_rate))
-      |> Map.put("payment_usd", amount_to_usd(payment, currency, exchange_rate))
-      |> Map.put(
-        "payable_usd",
-        amount_to_usd(Decimal.sub(total, payment), currency, exchange_rate)
-      )
-
-    %Entry{}
-    |> Entry.changeset(attrs)
-    |> Repo.insert()
-  end
-
-  def create_financial_entry(attrs) do
-    currency = Repo.get!(Currency, attrs["currency_id"])
-    exchange_rate = exchange_rate_for(currency, attrs["exchange_rate"])
-
-    loan_amount = decimal_from_param(attrs["loan_amount"] || "0")
-    principal_payment = decimal_from_param(attrs["principal_payment"] || "0")
-    financial_expense = decimal_from_param(attrs["financial_expense"] || "0")
-    credit_note = decimal_from_param(attrs["credit_note"] || "0")
-    debit_note = decimal_from_param(attrs["debit_note"] || "0")
-    financial_expense_payment = decimal_from_param(attrs["financial_expense_payment"] || "0")
-
-    net_financial_expense =
-      financial_expense
-      |> Decimal.sub(credit_note)
-      |> Decimal.add(debit_note)
-
-    attrs =
-      attrs
-      |> Map.put("exchange_rate", exchange_rate)
-      |> Map.put("loan_amount_usd", amount_to_usd(loan_amount, currency, exchange_rate))
-      |> Map.put(
-        "principal_payment_usd",
-        amount_to_usd(principal_payment, currency, exchange_rate)
-      )
-      |> Map.put(
-        "financial_expense_usd",
-        amount_to_usd(financial_expense, currency, exchange_rate)
-      )
-      |> Map.put("credit_note_usd", amount_to_usd(credit_note, currency, exchange_rate))
-      |> Map.put("debit_note_usd", amount_to_usd(debit_note, currency, exchange_rate))
-      |> Map.put(
-        "net_financial_expense_usd",
-        amount_to_usd(net_financial_expense, currency, exchange_rate)
-      )
-      |> Map.put(
-        "financial_expense_payment_usd",
-        amount_to_usd(financial_expense_payment, currency, exchange_rate)
-      )
-      |> Map.put(
-        "loan_payable_usd",
-        amount_to_usd(Decimal.sub(loan_amount, principal_payment), currency, exchange_rate)
-      )
-      |> Map.put(
-        "financial_expense_payable_usd",
-        amount_to_usd(
-          Decimal.sub(net_financial_expense, financial_expense_payment),
-          currency,
-          exchange_rate
+      attrs =
+        attrs
+        |> Map.put("organization_id", organization.id)
+        |> Map.put("category", provider.category)
+        |> Map.put("exchange_rate", exchange_rate)
+        |> Map.put("exempt_amount_usd", amount_to_usd(exempt_amount, currency, exchange_rate))
+        |> Map.put("taxable_amount_usd", amount_to_usd(taxable_amount, currency, exchange_rate))
+        |> Map.put("tax_rate", tax_rate)
+        |> Map.put("tax_amount_usd", amount_to_usd(tax_amount, currency, exchange_rate))
+        |> Map.put("credit_note_usd", amount_to_usd(credit_note, currency, exchange_rate))
+        |> Map.put("debit_note_usd", amount_to_usd(debit_note, currency, exchange_rate))
+        |> Map.put("total_usd", amount_to_usd(total, currency, exchange_rate))
+        |> Map.put("payment_usd", amount_to_usd(payment, currency, exchange_rate))
+        |> Map.put(
+          "payable_usd",
+          amount_to_usd(Decimal.sub(total, payment), currency, exchange_rate)
         )
-      )
 
-    %FinancialEntry{}
-    |> FinancialEntry.changeset(attrs)
-    |> Repo.insert()
+      %Entry{}
+      |> Entry.changeset(attrs)
+      |> Repo.insert()
+    else
+      nil -> {:error, :invalid_provider}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  def summary_totals do
-    settings().totals
+  def create_financial_entry(attrs, organization \\ first_organization!()) do
+    with %Provider{} <- get_provider_for_organization(attrs["provider_id"], organization),
+         %Currency{} = currency <-
+           Currencies.currency_for_organization(attrs["currency_id"], organization),
+         entry_date = date_from_param(attrs["entry_date"]),
+         :ok <- Accounting.ensure_writable_period(organization, entry_date) do
+      exchange_rate = exchange_rate_for(currency, attrs["exchange_rate"])
+
+      loan_amount = decimal_from_param(attrs["loan_amount"] || "0")
+      principal_payment = decimal_from_param(attrs["principal_payment"] || "0")
+      financial_expense = decimal_from_param(attrs["financial_expense"] || "0")
+      credit_note = decimal_from_param(attrs["credit_note"] || "0")
+      debit_note = decimal_from_param(attrs["debit_note"] || "0")
+      financial_expense_payment = decimal_from_param(attrs["financial_expense_payment"] || "0")
+
+      net_financial_expense =
+        financial_expense
+        |> Decimal.sub(credit_note)
+        |> Decimal.add(debit_note)
+
+      attrs =
+        attrs
+        |> Map.put("organization_id", organization.id)
+        |> Map.put("exchange_rate", exchange_rate)
+        |> Map.put("loan_amount_usd", amount_to_usd(loan_amount, currency, exchange_rate))
+        |> Map.put(
+          "principal_payment_usd",
+          amount_to_usd(principal_payment, currency, exchange_rate)
+        )
+        |> Map.put(
+          "financial_expense_usd",
+          amount_to_usd(financial_expense, currency, exchange_rate)
+        )
+        |> Map.put("credit_note_usd", amount_to_usd(credit_note, currency, exchange_rate))
+        |> Map.put("debit_note_usd", amount_to_usd(debit_note, currency, exchange_rate))
+        |> Map.put(
+          "net_financial_expense_usd",
+          amount_to_usd(net_financial_expense, currency, exchange_rate)
+        )
+        |> Map.put(
+          "financial_expense_payment_usd",
+          amount_to_usd(financial_expense_payment, currency, exchange_rate)
+        )
+        |> Map.put(
+          "loan_payable_usd",
+          amount_to_usd(Decimal.sub(loan_amount, principal_payment), currency, exchange_rate)
+        )
+        |> Map.put(
+          "financial_expense_payable_usd",
+          amount_to_usd(
+            Decimal.sub(net_financial_expense, financial_expense_payment),
+            currency,
+            exchange_rate
+          )
+        )
+
+      %FinancialEntry{}
+      |> FinancialEntry.changeset(attrs)
+      |> Repo.insert()
+    else
+      nil -> {:error, :invalid_provider}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  def vat_total(month, year) do
-    organization = first_organization!()
+  def summary_totals(organization \\ first_organization!()) do
+    settings(organization).totals
+  end
+
+  def vat_total(month, year, organization \\ first_organization!()) do
+    organization = Repo.preload(organization, :base_currency)
 
     Entry
     |> join(:inner, [entry], provider in assoc(entry, :provider))
@@ -349,6 +366,13 @@ defmodule Sipaex.Expenses do
     |> Repo.one!()
   end
 
+  defp get_provider_for_organization(id, organization) do
+    Provider
+    |> where([provider], provider.id == ^id)
+    |> where([provider], provider.organization_id == ^organization.id)
+    |> Repo.one()
+  end
+
   defp exchange_rate_for(%Currency{code: "USD"}, _exchange_rate), do: Decimal.new("1")
 
   defp exchange_rate_for(currency, exchange_rate) when exchange_rate in [nil, ""] do
@@ -365,4 +389,7 @@ defmodule Sipaex.Expenses do
   defp decimal_from_param(""), do: Decimal.new("0")
   defp decimal_from_param(value) when is_integer(value), do: Decimal.new(value)
   defp decimal_from_param(value) when is_binary(value), do: Decimal.new(value)
+
+  defp date_from_param(%Date{} = value), do: value
+  defp date_from_param(value) when is_binary(value), do: Date.from_iso8601!(value)
 end

@@ -20,17 +20,14 @@ defmodule Sipaex.Common.Currencies do
 
   def storage_currency_code, do: @storage_currency_code
 
-  def currency_settings do
+  def currency_settings(organization \\ first_organization!()) do
     ensure_storage_currency!()
 
-    organization =
-      Organization
-      |> order_by([organization], asc: organization.inserted_at)
-      |> preload(:base_currency)
-      |> Repo.one()
+    organization = Repo.preload(organization, :base_currency)
 
     organization_currencies =
       OrganizationCurrency
+      |> where([organization_currency], organization_currency.organization_id == ^organization.id)
       |> join(
         :inner,
         [organization_currency],
@@ -58,11 +55,29 @@ defmodule Sipaex.Common.Currencies do
     }
   end
 
-  def create_currency(attrs) do
+  def currency_for_organization(currency_id, _organization) when currency_id in [nil, ""],
+    do: nil
+
+  def currency_for_organization(currency_id, organization) do
+    Currency
+    |> join(
+      :inner,
+      [currency],
+      organization_currency in OrganizationCurrency,
+      on: organization_currency.currency_id == currency.id
+    )
+    |> where([currency, organization_currency], currency.id == ^currency_id)
+    |> where(
+      [_currency, organization_currency],
+      organization_currency.organization_id == ^organization.id
+    )
+    |> Repo.one()
+  end
+
+  def create_currency(attrs, organization \\ first_organization!()) do
     now = DateTime.utc_now(:second)
     code = attrs |> Map.get("code", "") |> String.upcase() |> String.trim()
     rate = Map.get(attrs, "rate")
-    organization = first_organization!()
     storage_currency = ensure_storage_currency!()
 
     attrs =
@@ -92,54 +107,60 @@ defmodule Sipaex.Common.Currencies do
     |> Repo.transaction()
   end
 
-  def set_default_currency(currency_id) do
-    organization = first_organization!()
+  def set_default_currency(currency_id, organization \\ first_organization!()) do
     now = DateTime.utc_now(:second)
 
-    Multi.new()
-    |> Multi.update_all(
-      :clear_default,
-      from(organization_currency in OrganizationCurrency,
-        where: organization_currency.organization_id == ^organization.id
-      ),
-      set: [base: false, updated_at: now]
-    )
-    |> Multi.update_all(
-      :set_default,
-      from(organization_currency in OrganizationCurrency,
-        where:
-          organization_currency.organization_id == ^organization.id and
-            organization_currency.currency_id == ^currency_id
-      ),
-      set: [base: true, updated_at: now]
-    )
-    |> Multi.update(
-      :organization,
-      Organization.changeset(organization, %{base_currency_id: currency_id})
-    )
-    |> Repo.transaction()
-  end
-
-  def remove_currency(currency_id) do
-    organization = first_organization!()
-    storage_currency = ensure_storage_currency!()
-    currency = Repo.get!(Currency, currency_id)
-    now = DateTime.utc_now(:second)
-
-    if currency.code == @storage_currency_code do
-      {:error, :storage_currency_required}
-    else
+    if currency_for_organization(currency_id, organization) do
       Multi.new()
-      |> maybe_restore_default_currency(organization, storage_currency, currency_id, now)
-      |> Multi.delete_all(
-        :organization_currency,
+      |> Multi.update_all(
+        :clear_default,
+        from(organization_currency in OrganizationCurrency,
+          where: organization_currency.organization_id == ^organization.id
+        ),
+        set: [base: false, updated_at: now]
+      )
+      |> Multi.update_all(
+        :set_default,
         from(organization_currency in OrganizationCurrency,
           where:
             organization_currency.organization_id == ^organization.id and
               organization_currency.currency_id == ^currency_id
-        )
+        ),
+        set: [base: true, updated_at: now]
+      )
+      |> Multi.update(
+        :organization,
+        Organization.changeset(organization, %{base_currency_id: currency_id})
       )
       |> Repo.transaction()
+    else
+      {:error, :invalid_currency}
+    end
+  end
+
+  def remove_currency(currency_id, organization \\ first_organization!()) do
+    storage_currency = ensure_storage_currency!()
+    now = DateTime.utc_now(:second)
+
+    case currency_for_organization(currency_id, organization) do
+      nil ->
+        {:error, :invalid_currency}
+
+      %{code: @storage_currency_code} ->
+        {:error, :storage_currency_required}
+
+      _currency ->
+        Multi.new()
+        |> maybe_restore_default_currency(organization, storage_currency, currency_id, now)
+        |> Multi.delete_all(
+          :organization_currency,
+          from(organization_currency in OrganizationCurrency,
+            where:
+              organization_currency.organization_id == ^organization.id and
+                organization_currency.currency_id == ^currency_id
+          )
+        )
+        |> Repo.transaction()
     end
   end
 

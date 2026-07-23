@@ -424,12 +424,13 @@ defmodule SipaexWeb.CoreComponents do
   """
   attr :id, :string, required: true
   attr :title, :string, required: true
+  attr :box_class, :string, default: "max-w-2xl"
   slot :inner_block, required: true
 
   def modal(assigns) do
     ~H"""
     <dialog id={@id} class="modal">
-      <div class="modal-box max-w-2xl rounded-box border border-base-300 p-0 shadow-xl">
+      <div class={["modal-box rounded-box border border-base-300 p-0 shadow-xl", @box_class]}>
         <div class="flex items-center justify-between border-b border-base-300 px-6 py-4">
           <h2 class="text-lg font-semibold">{@title}</h2>
           <form method="dialog">

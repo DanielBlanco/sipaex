@@ -260,6 +260,262 @@ const setupCommerceTabs = () => {
   activate(tabContainer.dataset.activeCommerceTab || "dashboard")
 }
 
+const setupCommerceExchangeRates = () => {
+  const currencySelect = document.getElementById("commerce_entry_currency_id")
+  const exchangeRateInput = document.getElementById("commerce_entry_exchange_rate")
+
+  if (!currencySelect || !exchangeRateInput) return
+
+  const syncExchangeRate = () => {
+    const selectedOption = currencySelect.selectedOptions[0]
+    const exchangeRate = selectedOption?.dataset.exchangeRate
+
+    if (exchangeRate !== undefined) {
+      exchangeRateInput.value = exchangeRate
+    }
+  }
+
+  currencySelect.addEventListener("change", () => {
+    syncExchangeRate()
+    document.dispatchEvent(new CustomEvent("commerce:currency-changed"))
+  })
+  syncExchangeRate()
+}
+
+const setupCommerceReceiptLines = () => {
+  const tableBody = document.querySelector("[data-commerce-lines]")
+  const addButton = document.querySelector("[data-commerce-add-line]")
+  const receiptSubtotal = document.querySelector("[data-commerce-receipt-subtotal]")
+  const receiptVat = document.querySelector("[data-commerce-receipt-vat]")
+  const receiptTotal = document.querySelector("[data-commerce-receipt-total]")
+
+  if (!tableBody || !addButton) return
+
+  const lineTemplate = tableBody.querySelector("[data-commerce-line]")
+  const noteTemplate = lineTemplate?.nextElementSibling?.matches("[data-commerce-note-row]")
+    ? lineTemplate.nextElementSibling
+    : null
+
+  if (!lineTemplate || !noteTemplate) return
+
+  const renumberLine = (line, index) => {
+    const noteRow = line.nextElementSibling?.matches("[data-commerce-note-row]")
+      ? line.nextElementSibling
+      : null
+
+    const rows = [line, noteRow].filter(Boolean)
+
+    rows.forEach((row) => {
+      row.querySelectorAll("[name]").forEach((field) => {
+        field.name = field.name.replace(/commerce_entry\[lines\]\[\d+\]/, `commerce_entry[lines][${index}]`)
+      })
+
+      row.querySelectorAll("[id]").forEach((field) => {
+        field.id = field.id.replace(/purchase_line_\d+_/, `purchase_line_${index}_`)
+      })
+    })
+  }
+
+  const numberFromField = (line, selector) => {
+    const value = line.querySelector(selector)?.value
+    const number = Number.parseFloat(value)
+
+    return Number.isFinite(number) ? number : 0
+  }
+
+  const selectedVatRate = (line) => {
+    const selectedOption = line.querySelector("[name$='[vat_rate_id]']")?.selectedOptions[0]
+    const rate = Number.parseFloat(selectedOption?.dataset.rate)
+
+    return Number.isFinite(rate) ? rate : 0
+  }
+
+  const currencySymbol = () => {
+    const currencySelect = document.getElementById("commerce_entry_currency_id")
+
+    return currencySelect?.selectedOptions[0]?.dataset.currencySymbol || ""
+  }
+
+  const formatMoney = (amount) => {
+    const formatted = amount.toLocaleString("es-CR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+
+    return `${currencySymbol()}${formatted}`
+  }
+
+  const normalizeText = (value) => {
+    return value
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+  }
+
+  const filterProductPicker = (picker) => {
+    const searchInput = picker.querySelector("[data-product-search]")
+    const results = picker.querySelector("[data-product-results]")
+    const empty = picker.querySelector("[data-product-empty]")
+    const query = normalizeText(searchInput?.value || "")
+    let visibleCount = 0
+
+    picker.querySelectorAll("[data-product-option]").forEach((option) => {
+      const matches = normalizeText(option.dataset.productSearchText || "").includes(query)
+      option.classList.toggle("hidden", !matches)
+      if (matches) visibleCount += 1
+    })
+
+    if (empty) empty.classList.toggle("hidden", visibleCount > 0)
+    if (results) results.classList.toggle("hidden", false)
+  }
+
+  const closeProductPickers = (exceptPicker = null) => {
+    tableBody.querySelectorAll("[data-product-picker]").forEach((picker) => {
+      if (picker !== exceptPicker) {
+        picker.querySelector("[data-product-results]")?.classList.add("hidden")
+      }
+    })
+  }
+
+  const clearProductPicker = (picker) => {
+    const idInput = picker.querySelector("[data-product-id-input]")
+    if (idInput) idInput.value = ""
+  }
+
+  const refreshTotals = () => {
+    let subtotal = 0
+    let vat = 0
+
+    tableBody.querySelectorAll("[data-commerce-line]").forEach((line) => {
+      const quantity = numberFromField(line, "[name$='[quantity]']")
+      const unitPrice = numberFromField(line, "[name$='[unit_price]']")
+      const lineSubtotal = quantity * unitPrice
+      const lineVat = lineSubtotal * selectedVatRate(line)
+
+      subtotal += lineSubtotal
+      vat += lineVat
+
+      const lineSubtotalCell = line.querySelector("[data-commerce-line-subtotal]")
+      if (lineSubtotalCell) lineSubtotalCell.textContent = formatMoney(lineSubtotal)
+    })
+
+    if (receiptSubtotal) receiptSubtotal.textContent = formatMoney(subtotal)
+    if (receiptVat) receiptVat.textContent = formatMoney(vat)
+    if (receiptTotal) receiptTotal.textContent = formatMoney(subtotal + vat)
+  }
+
+  const syncRemoveButtons = () => {
+    const lines = tableBody.querySelectorAll("[data-commerce-line]")
+
+    lines.forEach((line, index) => {
+      renumberLine(line, index)
+
+      const removeButton = line.querySelector("[data-commerce-remove-line]")
+      if (removeButton) removeButton.disabled = lines.length === 1
+    })
+
+    refreshTotals()
+  }
+
+  addButton.addEventListener("click", () => {
+    const nextLine = lineTemplate.cloneNode(true)
+    const nextNote = noteTemplate.cloneNode(true)
+
+    nextLine.querySelectorAll("input").forEach((input) => {
+      if (input.name.includes("[quantity]")) {
+        input.value = "1"
+      } else {
+        input.value = ""
+      }
+    })
+
+    nextNote.querySelectorAll("input").forEach((input) => {
+      input.value = ""
+    })
+
+    nextLine.querySelector("[data-product-results]")?.classList.add("hidden")
+    nextNote.classList.add("hidden")
+
+    tableBody.appendChild(nextLine)
+    tableBody.appendChild(nextNote)
+    syncRemoveButtons()
+  })
+
+  tableBody.addEventListener("input", refreshTotals)
+  tableBody.addEventListener("change", refreshTotals)
+  document.addEventListener("commerce:currency-changed", refreshTotals)
+
+  tableBody.addEventListener("focusin", (event) => {
+    const searchInput = event.target.closest("[data-product-search]")
+
+    if (!searchInput) return
+
+    const picker = searchInput.closest("[data-product-picker]")
+    closeProductPickers(picker)
+    filterProductPicker(picker)
+  })
+
+  tableBody.addEventListener("input", (event) => {
+    const searchInput = event.target.closest("[data-product-search]")
+
+    if (!searchInput) return
+
+    const picker = searchInput.closest("[data-product-picker]")
+    clearProductPicker(picker)
+    filterProductPicker(picker)
+  })
+
+  tableBody.addEventListener("click", (event) => {
+    const productOption = event.target.closest("[data-product-option]")
+
+    if (productOption) {
+      const picker = productOption.closest("[data-product-picker]")
+      const idInput = picker.querySelector("[data-product-id-input]")
+      const searchInput = picker.querySelector("[data-product-search]")
+
+      if (idInput) idInput.value = productOption.dataset.productId || ""
+      if (searchInput) searchInput.value = productOption.dataset.productLabel || ""
+
+      picker.querySelector("[data-product-results]")?.classList.add("hidden")
+      return
+    }
+
+    const noteButton = event.target.closest("[data-commerce-toggle-note]")
+
+    if (noteButton) {
+      const line = noteButton.closest("[data-commerce-line]")
+      const noteRow = line?.nextElementSibling?.matches("[data-commerce-note-row]")
+        ? line.nextElementSibling
+        : null
+
+      noteRow?.classList.toggle("hidden")
+      return
+    }
+
+    const removeButton = event.target.closest("[data-commerce-remove-line]")
+
+    if (!removeButton) return
+
+    const line = removeButton.closest("[data-commerce-line]")
+    const noteRow = line?.nextElementSibling?.matches("[data-commerce-note-row]")
+      ? line.nextElementSibling
+      : null
+
+    noteRow?.remove()
+    line?.remove()
+    syncRemoveButtons()
+  })
+
+  syncRemoveButtons()
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-product-picker]")) {
+      closeProductPickers()
+    }
+  })
+}
+
 const setupModalOpeners = () => {
   document.querySelectorAll("[data-modal-target]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -278,6 +534,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setupTaxesExchangeRates()
   setupTaxesTabs()
   setupCommerceTabs()
+  setupCommerceExchangeRates()
+  setupCommerceReceiptLines()
   setupModalOpeners()
 })
 

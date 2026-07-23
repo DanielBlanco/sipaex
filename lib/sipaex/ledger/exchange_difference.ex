@@ -15,6 +15,7 @@ defmodule Sipaex.Ledger.ExchangeDifference do
     field :concept, :string
 
     belongs_to :bank_account, Sipaex.Ledger.BankAccount
+    belongs_to :organization, Sipaex.Organizations.Organization
     belongs_to :currency, Sipaex.Common.Currency
 
     timestamps(type: :utc_datetime)
@@ -24,6 +25,7 @@ defmodule Sipaex.Ledger.ExchangeDifference do
     exchange_difference
     |> cast(attrs, [
       :bank_account_id,
+      :organization_id,
       :currency_id,
       :transaction_date,
       :foreign_amount,
@@ -35,6 +37,7 @@ defmodule Sipaex.Ledger.ExchangeDifference do
     ])
     |> validate_required([
       :bank_account_id,
+      :organization_id,
       :currency_id,
       :transaction_date,
       :foreign_amount,

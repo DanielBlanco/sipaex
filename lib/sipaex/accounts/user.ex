@@ -29,7 +29,8 @@ defmodule Sipaex.Accounts.User do
       :organization_id,
       :activated_at
     ])
-    |> validate_required([:username, :name, :email, :password_hash, :role])
+    |> update_change(:email, &String.downcase/1)
+    |> validate_required([:username, :name, :email, :password_hash, :role, :organization_id])
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/)
     |> unique_constraint(:username)
     |> unique_constraint(:email)

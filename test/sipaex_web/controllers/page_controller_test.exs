@@ -1,17 +1,25 @@
 defmodule SipaexWeb.PageControllerTest do
   use SipaexWeb.ConnCase
 
-  alias Sipaex.Common.Currency
-  alias Sipaex.Common.ExchangeRate
+  import Ecto.Query
+
   alias Sipaex.Bank.PettyCashTransaction
   alias Sipaex.Commerce.Entry, as: CommerceEntry
+  alias Sipaex.Commerce.EntryLine
   alias Sipaex.Commerce.Party
+  alias Sipaex.Accounts
+  alias Sipaex.Accounts.User
+  alias Sipaex.Accounting
+  alias Sipaex.Common.Currencies
+  alias Sipaex.Common.Currency
+  alias Sipaex.Common.ExchangeRate
   alias Sipaex.Dividends.Beneficiary
   alias Sipaex.Dividends.CapitalEntry
   alias Sipaex.Dividends.Entry
   alias Sipaex.Expenses.Entry, as: ExpenseEntry
   alias Sipaex.Expenses.FinancialEntry
   alias Sipaex.Expenses.Provider, as: ExpenseProvider
+  alias Sipaex.Inventory.Product
   alias Sipaex.Ledger
   alias Sipaex.Ledger.BankAccount
   alias Sipaex.Ledger.ExchangeDifference
@@ -28,14 +36,38 @@ defmodule SipaexWeb.PageControllerTest do
     html = html_response(conn, 200)
 
     assert html =~ ~s(id="login-form")
-    assert html =~ ~s(action="/dashboard")
+    assert html =~ ~s(action="/login")
     refute html =~ ~s(id="app-topnav")
     assert html =~ "Iniciar sesión"
     assert html =~ "Correo electrónico"
   end
 
+  test "POST /login stores the user session", %{conn: conn} do
+    %{organization: organization} = seed_currency_settings()
+    user = seed_user(organization)
+
+    conn =
+      post(conn, ~p"/login", %{
+        "session" => %{
+          "email" => user.email,
+          "password" => test_password()
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/dashboard"
+    assert get_session(conn, :user_id) == user.id
+  end
+
+  test "GET /dashboard redirects without an authenticated user", %{conn: conn} do
+    conn = get(conn, ~p"/dashboard")
+
+    assert redirected_to(conn) == ~p"/"
+    assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Debe iniciar sesión."
+  end
+
   test "GET /dashboard", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn = get(conn, ~p"/dashboard")
     html = html_response(conn, 200)
@@ -69,7 +101,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "GET /currencies renders currency settings", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn = get(conn, ~p"/currencies")
     html = html_response(conn, 200)
@@ -84,8 +117,265 @@ defmodule SipaexWeb.PageControllerTest do
     assert html =~ "Obligatoria"
   end
 
+  test "currency settings are scoped to the requested organization" do
+    %{usd: usd} = seed_currency_settings()
+
+    second_organization =
+      %Organization{}
+      |> Organization.changeset(%{
+        name: "Segunda Empresa",
+        legal_name: "Segunda Empresa Sociedad Anónima",
+        tax_id: "3101999999",
+        base_currency_id: usd.id,
+        activated_at: DateTime.utc_now(:second)
+      })
+      |> Repo.insert!()
+
+    %OrganizationCurrency{}
+    |> OrganizationCurrency.changeset(%{
+      organization_id: second_organization.id,
+      currency_id: usd.id,
+      base: true,
+      activated_at: DateTime.utc_now(:second)
+    })
+    |> Repo.insert!()
+
+    currency_codes =
+      second_organization
+      |> Currencies.currency_settings()
+      |> Map.fetch!(:organization_currencies)
+      |> Enum.map(& &1.currency.code)
+
+    assert currency_codes == ["USD"]
+  end
+
+  test "organization scoped actions reject ids from another organization", %{conn: conn} do
+    %{usd: usd, crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
+    other_organization = seed_organization("Otra Empresa", "3101888888", usd)
+    link_currency(other_organization, usd, true)
+    link_currency(other_organization, crc, false)
+
+    other_bank_account =
+      seed_bank_account_for_organization(other_organization, crc, "Banco Otra Empresa")
+
+    other_petty_cash =
+      seed_petty_cash_for_organization(other_organization, crc, "Caja chica ajena")
+
+    other_provider = seed_expense_provider_for_organization(other_organization, "administrative")
+    other_beneficiary = seed_beneficiary_for_organization(other_organization)
+    other_party = seed_party_for_organization(other_organization, "purchase")
+    other_product = seed_product_for_organization(other_organization)
+    other_vat_rate = seed_vat_rate_for_organization(other_organization, "IVA ajeno", "0.13")
+    own_party = seed_party_for_organization(organization, "purchase")
+    own_product = seed_product_for_organization(organization)
+    own_vat_rate = seed_vat_rate_for_organization(organization, "IVA propio", "0.13")
+
+    conn =
+      post(conn, ~p"/ledger/transactions", %{
+        "ledger_transaction" => %{
+          "bank_account_id" => other_bank_account.id,
+          "movement_type" => "deposit_or_transfer_received",
+          "transaction_date" => "2026-07-22",
+          "amount" => "100",
+          "voucher" => "IDOR-L",
+          "concept" => "Movimiento cruzado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/ledger?tab=transactions"
+    refute Repo.get_by(Transaction, concept: "Movimiento cruzado")
+
+    conn =
+      post(conn, ~p"/ledger/exchange-differences", %{
+        "exchange_difference" => %{
+          "bank_account_id" => other_bank_account.id,
+          "transaction_date" => "2026-07-22",
+          "foreign_amount" => "100",
+          "purchase_exchange_rate" => "500",
+          "sale_exchange_rate" => "510",
+          "concept" => "Diferencial cruzado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/ledger?tab=exchange-differences"
+    refute Repo.get_by(ExchangeDifference, concept: "Diferencial cruzado")
+
+    conn =
+      post(conn, ~p"/expenses/entries", %{
+        "expense_entry" => %{
+          "provider_id" => other_provider.id,
+          "currency_id" => crc.id,
+          "entry_date" => "2026-07-22",
+          "invoice_number" => "IDOR-G",
+          "exempt_amount" => "0",
+          "taxable_amount" => "100",
+          "tax_rate" => "0.13",
+          "payment" => "0",
+          "concept" => "Gasto cruzado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/expenses?tab=entries"
+    refute Repo.get_by(ExpenseEntry, invoice_number: "IDOR-G")
+
+    conn =
+      post(conn, ~p"/expenses/financial-entries", %{
+        "financial_entry" => %{
+          "provider_id" => other_provider.id,
+          "currency_id" => crc.id,
+          "entry_date" => "2026-07-22",
+          "loan_amount" => "1000",
+          "principal_payment" => "0",
+          "financial_expense" => "100",
+          "financial_expense_payment" => "0",
+          "concept" => "Gasto financiero cruzado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/expenses?tab=financial"
+    refute Repo.get_by(FinancialEntry, concept: "Gasto financiero cruzado")
+
+    conn =
+      post(conn, ~p"/dividends/capital-entries", %{
+        "capital_entry" => %{
+          "beneficiary_id" => other_beneficiary.id,
+          "entry_date" => "2026-07-22",
+          "share_type" => "ACCIONES COMUNES",
+          "share_value_usd" => "100",
+          "quantity" => "1",
+          "payment_usd" => "0",
+          "concept" => "Capital cruzado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/dividends?tab=capital"
+    refute Repo.get_by(CapitalEntry, concept: "Capital cruzado")
+
+    conn =
+      post(conn, ~p"/dividends/entries", %{
+        "dividend_entry" => %{
+          "beneficiary_id" => other_beneficiary.id,
+          "entry_date" => "2026-07-22",
+          "declaration_amount_usd" => "1000",
+          "payment_usd" => "0",
+          "concept" => "Dividendo cruzado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/dividends?tab=entries"
+    refute Repo.get_by(Entry, concept: "Dividendo cruzado")
+
+    conn =
+      post(conn, ~p"/purchases/entries", %{
+        "commerce_entry" => %{
+          "party_id" => other_party.id,
+          "currency_id" => crc.id,
+          "vat_rate_id" => other_vat_rate.id,
+          "entry_date" => "2026-07-22",
+          "document_number" => "IDOR-C",
+          "concept" => "Compra cruzada",
+          "lines" => %{
+            "0" => %{
+              "product_id" => other_product.id,
+              "quantity" => "1",
+              "unit_price" => "100",
+              "vat_rate_id" => other_vat_rate.id
+            }
+          }
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/purchases?tab=entries"
+    refute Repo.get_by(CommerceEntry, document_number: "IDOR-C")
+
+    conn =
+      post(conn, ~p"/purchases/entries", %{
+        "commerce_entry" => %{
+          "party_id" => own_party.id,
+          "currency_id" => crc.id,
+          "vat_rate_id" => own_vat_rate.id,
+          "entry_date" => "2026-07-22",
+          "document_number" => "IDOR-P",
+          "concept" => "Producto cruzado",
+          "lines" => %{
+            "0" => %{
+              "product_id" => other_product.id,
+              "quantity" => "1",
+              "unit_price" => "100",
+              "vat_rate_id" => own_vat_rate.id
+            }
+          }
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/purchases?tab=entries"
+    refute Repo.get_by(CommerceEntry, document_number: "IDOR-P")
+
+    conn =
+      post(conn, ~p"/purchases/entries", %{
+        "commerce_entry" => %{
+          "party_id" => own_party.id,
+          "currency_id" => crc.id,
+          "vat_rate_id" => other_vat_rate.id,
+          "entry_date" => "2026-07-22",
+          "document_number" => "IDOR-VAT",
+          "concept" => "IVA cruzado",
+          "lines" => %{
+            "0" => %{
+              "product_id" => own_product.id,
+              "quantity" => "1",
+              "unit_price" => "100",
+              "vat_rate_id" => other_vat_rate.id
+            }
+          }
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/purchases?tab=entries"
+    refute Repo.get_by(CommerceEntry, document_number: "IDOR-VAT")
+
+    conn = put(conn, ~p"/taxes/vat-rates/#{other_vat_rate.id}/toggle")
+
+    assert redirected_to(conn) == ~p"/taxes?tab=vat-rates"
+    assert Repo.reload!(other_vat_rate).active
+
+    conn = delete(conn, ~p"/petty-cash/#{other_petty_cash.id}")
+
+    assert redirected_to(conn) == ~p"/bank"
+    assert Repo.reload(other_petty_cash)
+  end
+
+  test "database rejects cross organization transaction relationships" do
+    %{usd: usd, crc: crc, organization: organization} = seed_currency_settings()
+    other_organization = seed_organization("Otra Empresa", "3101777777", usd)
+    link_currency(other_organization, usd, true)
+    link_currency(other_organization, crc, false)
+
+    other_bank_account =
+      seed_bank_account_for_organization(other_organization, crc, "Banco Ajeno")
+
+    changeset =
+      Transaction.changeset(%Transaction{}, %{
+        bank_account_id: other_bank_account.id,
+        organization_id: organization.id,
+        currency_id: crc.id,
+        movement_type: "deposit_or_transfer_received",
+        transaction_date: ~D[2026-07-22],
+        amount: Decimal.new("100"),
+        exchange_rate: Decimal.new("491.92"),
+        amount_usd: Decimal.new("0.2032850870"),
+        concept: "Inserción cruzada directa"
+      })
+
+    assert_raise Ecto.ConstraintError, fn ->
+      Repo.insert!(changeset)
+    end
+  end
+
   test "GET /ledger renders ledger workflow", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     bank_account = seed_bank_account(crc)
     seed_transaction(bank_account)
 
@@ -120,7 +410,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "GET /bank renders bank summary", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     bank_account = seed_bank_account(crc)
     seed_transaction(bank_account, "credit_note", "Nota de crédito bancaria")
     seed_exchange_difference(bank_account)
@@ -146,7 +437,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "GET /dividends renders dividend workflow", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     beneficiary = seed_dividend_beneficiary()
     seed_capital_entry(beneficiary)
     seed_dividend_entry(beneficiary)
@@ -187,7 +479,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "GET /dividends defaults to wizard", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn = get(conn, ~p"/dividends")
     html = html_response(conn, 200)
@@ -197,7 +490,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "GET /expenses renders expenses workflow", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     provider = seed_expense_provider("administrative")
     financial_provider = seed_expense_provider("financial", "Banco de Prueba")
     seed_expense_entry(provider, crc)
@@ -232,25 +526,51 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "GET /purchases renders purchase workflow", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     vat_rate = seed_vat_rate("General 13%", "0.13")
     party = seed_commerce_party("purchase", "Proveedor Compras")
+    seed_product("MP-WAX", "Cera de soya")
+    seed_product("PT-CANDLE-SEA", "Candle Breeze of the Sea", "finished_good")
     seed_commerce_entry("purchase", party, crc, vat_rate)
 
-    conn = get(conn, ~p"/purchases?tab=entries")
+    conn = get(conn, ~p"/purchases?tab=products")
     html = html_response(conn, 200)
 
     assert html =~ ~s(id="purchase-page")
     assert html =~ ~s(id="purchase-parties-table")
+    assert html =~ ~s(id="purchase-products-tab")
+    assert html =~ ~s(id="purchase-products-table")
+    assert html =~ ~s(id="purchase-product-form")
     assert html =~ ~s(id="purchase-entries-table")
+    assert html =~ ~s(id="purchase-receipt-lines-table")
+    assert html =~ ~s(id="purchase-add-line-button")
     assert html =~ ~s(id="purchase-party-form")
     assert html =~ ~s(id="purchase-entry-form")
+    assert html =~ ~s(data-product-picker)
+    assert html =~ ~s(data-product-search)
+    assert html =~ ~s(data-product-option)
+    assert html =~ ~s(data-commerce-toggle-note)
+    assert html =~ ~s(data-commerce-note-row)
     assert html =~ "Compras"
     assert html =~ "Proveedor Compras"
+    assert html =~ "MP-WAX"
+    assert html =~ "PT-CANDLE-SEA"
+
+    [product_picker] =
+      Regex.run(
+        ~r/<div class="relative w-64" data-product-picker>.*?<\/div>\s*<\/td>/s,
+        html
+      )
+
+    assert product_picker =~ ~s(type="search")
+    assert product_picker =~ "MP-WAX"
+    assert product_picker =~ "PT-CANDLE-SEA"
   end
 
   test "GET /sales renders sales workflow", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     vat_rate = seed_vat_rate("General 13%", "0.13")
     party = seed_commerce_party("sale", "Cliente Ventas")
     seed_commerce_entry("sale", party, crc, vat_rate)
@@ -267,10 +587,14 @@ defmodule SipaexWeb.PageControllerTest do
     assert html =~ "Cliente Ventas"
   end
 
-  test "POST /purchases/entries creates VAT purchase entry", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+  test "POST /purchases/entries creates purchase receipt with multiple lines", %{conn: conn} do
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     vat_rate = seed_vat_rate("General 13%", "0.13")
+    exempt_vat_rate = seed_vat_rate("Exento", "0")
     party = seed_commerce_party("purchase", "Proveedor Compras")
+    wax = seed_product("MP-WAX", "Cera de soya")
+    oil = seed_product("MP-OIL", "Aceite aromático")
 
     conn =
       post(conn, ~p"/purchases/entries", %{
@@ -281,20 +605,67 @@ defmodule SipaexWeb.PageControllerTest do
           "entry_date" => "2026-07-22",
           "document_number" => "C-1",
           "exempt_amount" => "0",
-          "taxable_amount" => "491920",
+          "taxable_amount" => "0",
           "payment" => "0",
-          "concept" => "Compra gravada"
+          "concept" => "Compra con detalle",
+          "lines" => %{
+            "0" => %{
+              "product_id" => wax.id,
+              "description" => "Mercadería gravada",
+              "quantity" => "2",
+              "unit_price" => "245960",
+              "vat_rate_id" => vat_rate.id
+            },
+            "1" => %{
+              "product_id" => oil.id,
+              "description" => "",
+              "quantity" => "1",
+              "unit_price" => "491.92",
+              "vat_rate_id" => exempt_vat_rate.id
+            }
+          }
         }
       })
 
     assert redirected_to(conn) == ~p"/purchases?tab=entries"
     entry = Repo.get_by!(CommerceEntry, document_number: "C-1")
     assert entry.entry_type == "purchase"
+    assert Decimal.equal?(entry.exempt_amount_usd, Decimal.new("1"))
+    assert Decimal.equal?(entry.taxable_amount_usd, Decimal.new("1000"))
     assert Decimal.equal?(entry.vat_amount_usd, Decimal.new("130"))
+
+    lines = EntryLine |> where([line], line.entry_id == ^entry.id) |> Repo.all()
+
+    assert length(lines) == 2
+    assert Enum.any?(lines, &(&1.product_id == wax.id))
+    assert Enum.any?(lines, &(&1.description == oil.name))
+  end
+
+  test "POST /purchases/products creates product catalog item", %{conn: conn} do
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
+
+    conn =
+      post(conn, ~p"/purchases/products", %{
+        "product" => %{
+          "code" => "PT-CANDLE-SEA",
+          "name" => "Candle Breeze of the Sea",
+          "product_type" => "finished_good",
+          "unit" => "unidad",
+          "description" => "Producto terminado para venta"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/purchases?tab=products"
+
+    product = Repo.get_by!(Product, code: "PT-CANDLE-SEA")
+    assert product.name == "Candle Breeze of the Sea"
+    assert product.product_type == "finished_good"
   end
 
   test "POST /sales/entries creates VAT sales entry", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     vat_rate = seed_vat_rate("General 13%", "0.13")
     party = seed_commerce_party("sale", "Cliente Ventas")
 
@@ -320,7 +691,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /expenses/providers creates provider", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn =
       post(conn, ~p"/expenses/providers", %{
@@ -341,7 +713,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /expenses/entries creates calculated expense entry", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     provider = seed_expense_provider("administrative")
 
     conn =
@@ -371,7 +744,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /expenses/financial-entries creates financial expense entry", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     provider = seed_expense_provider("financial", "Banco Financiero")
 
     conn =
@@ -399,7 +773,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "GET /taxes renders taxes workflow", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     seed_income_tax_entry(crc)
     seed_vat_period(crc)
 
@@ -437,7 +812,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /taxes/vat-rates creates VAT rate", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn =
       post(conn, ~p"/taxes/vat-rates", %{
@@ -456,7 +832,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "PUT /taxes/vat-rates/:id/toggle toggles VAT rate", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     rate = seed_vat_rate()
 
     conn = put(conn, ~p"/taxes/vat-rates/#{rate.id}/toggle")
@@ -471,7 +848,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "PUT /taxes/vat-rates/:id/toggle keeps exempt VAT active", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     exempt_rate = seed_vat_rate("Exento", "0")
 
     conn = put(conn, ~p"/taxes/vat-rates/#{exempt_rate.id}/toggle")
@@ -481,7 +859,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /taxes/income-tax creates calculated income tax entry", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn =
       post(conn, ~p"/taxes/income-tax", %{
@@ -505,7 +884,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /taxes/vat-periods creates calculated VAT period", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     vat_rate = seed_vat_rate("General 13%", "0.13")
     purchase_party = seed_commerce_party("purchase", "Proveedor IVA")
     sale_party = seed_commerce_party("sale", "Cliente IVA")
@@ -548,7 +928,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /dividends/beneficiaries creates beneficiary", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn =
       post(conn, ~p"/dividends/beneficiaries", %{
@@ -566,7 +947,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /dividends/capital-entries creates calculated capital entry", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     beneficiary = seed_dividend_beneficiary()
 
     conn =
@@ -591,7 +973,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /dividends/entries creates calculated dividend entry", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     beneficiary = seed_dividend_beneficiary()
     seed_capital_entry(beneficiary)
 
@@ -616,7 +999,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /petty-cash creates a petty cash transaction", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn =
       post(conn, ~p"/petty-cash", %{
@@ -637,7 +1021,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "DELETE /petty-cash/:id removes a petty cash transaction", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     transaction = seed_petty_cash(crc)
 
     conn = delete(conn, ~p"/petty-cash/#{transaction.id}")
@@ -647,7 +1032,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "GET /bank keeps petty cash native currency amounts exact", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     seed_petty_cash(crc, Decimal.new("91920.00"))
 
     conn = get(conn, ~p"/bank")
@@ -658,7 +1044,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /ledger/accounts creates bank account", %{conn: conn} do
-    %{usd: usd} = seed_currency_settings()
+    %{usd: usd, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn =
       post(conn, ~p"/ledger/accounts", %{
@@ -675,8 +1062,156 @@ defmodule SipaexWeb.PageControllerTest do
     assert Repo.get_by!(BankAccount, name: "Banco Nacional").iban == "CR123"
   end
 
+  test "POST /ledger/accounts rejects a currency not enabled for the organization", %{conn: conn} do
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
+    eur = seed_currency("EUR", "Euro", "€")
+
+    conn =
+      post(conn, ~p"/ledger/accounts", %{
+        "bank_account" => %{
+          "name" => "Banco EUR",
+          "current_account_number" => "333333333",
+          "customer_account_number" => "444444444",
+          "iban" => "CR-EUR",
+          "currency_id" => eur.id
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/ledger?tab=accounts"
+    refute Repo.get_by(BankAccount, name: "Banco EUR")
+  end
+
+  test "financial writes are rejected in a closed accounting period", %{conn: conn} do
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
+    seed_closed_period(organization)
+    bank_account = seed_bank_account(crc)
+    expense_provider = seed_expense_provider("administrative")
+    beneficiary = seed_dividend_beneficiary()
+    commerce_party = seed_commerce_party("purchase", "Proveedor cerrado")
+    vat_rate = seed_vat_rate("General 13%", "0.13")
+
+    conn =
+      post(conn, ~p"/ledger/transactions", %{
+        "ledger_transaction" => %{
+          "bank_account_id" => bank_account.id,
+          "movement_type" => "deposit_or_transfer_received",
+          "transaction_date" => "2026-07-22",
+          "amount" => "491.92",
+          "voucher" => "PER-LEDGER",
+          "concept" => "Movimiento en periodo cerrado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/ledger?tab=transactions"
+    refute Repo.get_by(Transaction, concept: "Movimiento en periodo cerrado")
+
+    conn =
+      post(conn, ~p"/expenses/entries", %{
+        "expense_entry" => %{
+          "provider_id" => expense_provider.id,
+          "currency_id" => crc.id,
+          "entry_date" => "2026-07-22",
+          "invoice_number" => "PER-GASTO",
+          "exempt_amount" => "0",
+          "taxable_amount" => "100",
+          "tax_rate" => "0.13",
+          "payment" => "0",
+          "concept" => "Gasto en periodo cerrado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/expenses?tab=entries"
+    refute Repo.get_by(ExpenseEntry, invoice_number: "PER-GASTO")
+
+    conn =
+      post(conn, ~p"/dividends/capital-entries", %{
+        "capital_entry" => %{
+          "beneficiary_id" => beneficiary.id,
+          "entry_date" => "2026-07-22",
+          "share_type" => "ACCIONES COMUNES",
+          "share_value_usd" => "100",
+          "quantity" => "1",
+          "payment_usd" => "0",
+          "concept" => "Capital en periodo cerrado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/dividends?tab=capital"
+    refute Repo.get_by(CapitalEntry, concept: "Capital en periodo cerrado")
+
+    conn =
+      post(conn, ~p"/purchases/entries", %{
+        "commerce_entry" => %{
+          "party_id" => commerce_party.id,
+          "currency_id" => crc.id,
+          "vat_rate_id" => vat_rate.id,
+          "entry_date" => "2026-07-22",
+          "document_number" => "PER-COMPRA",
+          "exempt_amount" => "0",
+          "taxable_amount" => "100",
+          "payment" => "0",
+          "concept" => "Compra en periodo cerrado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/purchases?tab=entries"
+    refute Repo.get_by(CommerceEntry, document_number: "PER-COMPRA")
+
+    conn =
+      post(conn, ~p"/taxes/income-tax", %{
+        "income_tax_entry" => %{
+          "currency_id" => crc.id,
+          "entry_date" => "2026-07-22",
+          "fiscal_period" => "2026",
+          "tax_amount" => "100",
+          "payment" => "0",
+          "concept" => "Renta en periodo cerrado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/taxes?tab=income"
+    refute Repo.get_by(IncomeTaxEntry, concept: "Renta en periodo cerrado")
+
+    conn =
+      post(conn, ~p"/taxes/vat-periods", %{
+        "vat_period" => %{
+          "currency_id" => crc.id,
+          "period_month" => "7",
+          "period_year" => "2026",
+          "payment" => "0",
+          "concept" => "IVA en periodo cerrado"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/taxes?tab=vat"
+    refute Repo.get_by(VatPeriod, concept: "IVA en periodo cerrado")
+
+    conn =
+      post(conn, ~p"/petty-cash", %{
+        "petty_cash" => %{
+          "details" => "Caja chica en periodo cerrado",
+          "amount" => "100",
+          "currency_id" => crc.id,
+          "transaction_type" => "withdrawal"
+        }
+      })
+
+    assert redirected_to(conn) == ~p"/bank"
+    refute Repo.get_by(PettyCashTransaction, details: "Caja chica en periodo cerrado")
+
+    existing_petty_cash = seed_petty_cash(crc)
+
+    conn = delete(conn, ~p"/petty-cash/#{existing_petty_cash.id}")
+
+    assert redirected_to(conn) == ~p"/bank"
+    assert Repo.reload(existing_petty_cash)
+  end
+
   test "POST /ledger/transactions creates canonical USD movement", %{conn: conn} do
-    %{usd: usd, crc: crc} = seed_currency_settings()
+    %{usd: usd, crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     bank_account = seed_bank_account(crc)
 
     conn =
@@ -719,7 +1254,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /ledger/exchange-differences creates exchange result", %{conn: conn} do
-    %{crc: crc} = seed_currency_settings()
+    %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
     bank_account = seed_bank_account(crc)
 
     conn =
@@ -743,7 +1279,8 @@ defmodule SipaexWeb.PageControllerTest do
   end
 
   test "POST /currencies creates a currency and exchange rate", %{conn: conn} do
-    seed_currency_settings()
+    %{organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn =
       post(conn, ~p"/currencies", %{
@@ -769,6 +1306,7 @@ defmodule SipaexWeb.PageControllerTest do
 
   test "POST /currencies/default sets reporting currency", %{conn: conn} do
     %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn =
       post(conn, ~p"/currencies/default", %{
@@ -786,6 +1324,7 @@ defmodule SipaexWeb.PageControllerTest do
 
   test "DELETE /currencies/:currency_id removes non-USD currency", %{conn: conn} do
     %{crc: crc, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn = delete(conn, ~p"/currencies/#{crc.id}")
 
@@ -802,6 +1341,7 @@ defmodule SipaexWeb.PageControllerTest do
 
   test "DELETE /currencies/:currency_id keeps USD required", %{conn: conn} do
     %{usd: usd, organization: organization} = seed_currency_settings()
+    conn = log_in(conn, organization)
 
     conn = delete(conn, ~p"/currencies/#{usd.id}")
 
@@ -818,27 +1358,8 @@ defmodule SipaexWeb.PageControllerTest do
   defp seed_currency_settings do
     now = DateTime.utc_now(:second)
 
-    usd =
-      %Currency{}
-      |> Currency.changeset(%{
-        code: "USD",
-        name: "US Dollar",
-        symbol: "$",
-        decimal_places: 2,
-        activated_at: now
-      })
-      |> Repo.insert!()
-
-    crc =
-      %Currency{}
-      |> Currency.changeset(%{
-        code: "CRC",
-        name: "Costa Rican Colón",
-        symbol: "₡",
-        decimal_places: 2,
-        activated_at: now
-      })
-      |> Repo.insert!()
+    usd = seed_currency("USD", "US Dollar", "$", now)
+    crc = seed_currency("CRC", "Costa Rican Colón", "₡", now)
 
     organization =
       %Organization{}
@@ -876,6 +1397,168 @@ defmodule SipaexWeb.PageControllerTest do
     %{usd: usd, crc: crc, organization: organization}
   end
 
+  defp seed_currency(code, name, symbol, now \\ DateTime.utc_now(:second)) do
+    %Currency{}
+    |> Currency.changeset(%{
+      code: code,
+      name: name,
+      symbol: symbol,
+      decimal_places: 2,
+      activated_at: now
+    })
+    |> Repo.insert!()
+  end
+
+  defp seed_organization(name, tax_id, base_currency) do
+    %Organization{}
+    |> Organization.changeset(%{
+      name: name,
+      legal_name: "#{name} Sociedad Anónima",
+      tax_id: tax_id,
+      base_currency_id: base_currency.id,
+      activated_at: DateTime.utc_now(:second)
+    })
+    |> Repo.insert!()
+  end
+
+  defp link_currency(organization, currency, base?) do
+    %OrganizationCurrency{}
+    |> OrganizationCurrency.changeset(%{
+      organization_id: organization.id,
+      currency_id: currency.id,
+      base: base?,
+      activated_at: DateTime.utc_now(:second)
+    })
+    |> Repo.insert!()
+  end
+
+  defp seed_bank_account_for_organization(organization, currency, name) do
+    %BankAccount{}
+    |> BankAccount.changeset(%{
+      organization_id: organization.id,
+      currency_id: currency.id,
+      name: name,
+      current_account_number: "999999999",
+      customer_account_number: "888888888",
+      iban: "CR-#{organization.tax_id}"
+    })
+    |> Repo.insert!()
+  end
+
+  defp seed_petty_cash_for_organization(organization, currency, details) do
+    %PettyCashTransaction{}
+    |> PettyCashTransaction.changeset(%{
+      organization_id: organization.id,
+      currency_id: currency.id,
+      details: details,
+      amount: Decimal.new("100"),
+      exchange_rate: Decimal.new("491.92"),
+      amount_usd: Decimal.div(Decimal.new("100"), Decimal.new("491.92")),
+      transaction_type: "withdrawal"
+    })
+    |> Repo.insert!()
+  end
+
+  defp seed_expense_provider_for_organization(organization, category) do
+    %ExpenseProvider{}
+    |> ExpenseProvider.changeset(%{
+      organization_id: organization.id,
+      category: category,
+      name: "Proveedor #{organization.name}",
+      identification: "#{organization.tax_id}-#{category}",
+      payment_terms_days: 30
+    })
+    |> Repo.insert!()
+  end
+
+  defp seed_beneficiary_for_organization(organization) do
+    %Beneficiary{}
+    |> Beneficiary.changeset(%{
+      organization_id: organization.id,
+      name: "Accionista #{organization.name}",
+      identification: "#{organization.tax_id}-ACC"
+    })
+    |> Repo.insert!()
+  end
+
+  defp seed_party_for_organization(organization, entry_type) do
+    %Party{}
+    |> Party.changeset(%{
+      organization_id: organization.id,
+      party_type: entry_type,
+      name: "Parte #{organization.name}",
+      identification: "#{organization.tax_id}-#{entry_type}"
+    })
+    |> Repo.insert!()
+  end
+
+  defp seed_product_for_organization(organization) do
+    %Product{}
+    |> Product.changeset(%{
+      organization_id: organization.id,
+      code: "P-#{organization.tax_id}",
+      name: "Producto #{organization.name}",
+      product_type: "raw_material",
+      unit: "unidad"
+    })
+    |> Repo.insert!()
+  end
+
+  defp seed_vat_rate_for_organization(organization, name, rate) do
+    %VatRate{}
+    |> VatRate.changeset(%{
+      organization_id: organization.id,
+      country_code: "CR",
+      name: name,
+      rate: Decimal.new(rate),
+      description: "Tarifa de otra organizacion",
+      active: true
+    })
+    |> Repo.insert!()
+  end
+
+  defp seed_user(organization) do
+    %User{}
+    |> User.changeset(%{
+      username: "daniel",
+      name: "Daniel Blanco",
+      email: "daniel.blancorojas@gmail.com",
+      password_hash: Accounts.hash_password(test_password()),
+      role: "admin",
+      organization_id: organization.id,
+      activated_at: DateTime.utc_now(:second)
+    })
+    |> Repo.insert!()
+  end
+
+  defp log_in(conn, organization) do
+    user = seed_user(organization)
+    init_test_session(conn, user_id: user.id)
+  end
+
+  defp test_password, do: "Sorata" <> "8!"
+
+  defp seed_closed_period(organization) do
+    {:ok, fiscal_year} =
+      Accounting.create_fiscal_year(organization, %{
+        name: "FY2026",
+        starts_on: ~D[2026-01-01],
+        ends_on: ~D[2026-12-31]
+      })
+
+    {:ok, period} =
+      Accounting.create_period(organization, %{
+        fiscal_year_id: fiscal_year.id,
+        name: "Julio 2026",
+        period_type: "monthly",
+        starts_on: ~D[2026-07-01],
+        ends_on: ~D[2026-07-31]
+      })
+
+    {:ok, period} = Accounting.close_period(organization, period.id)
+    period
+  end
+
   defp seed_bank_account(currency) do
     organization = Repo.one!(Organization)
 
@@ -899,6 +1582,7 @@ defmodule SipaexWeb.PageControllerTest do
     %Transaction{}
     |> Transaction.changeset(%{
       bank_account_id: bank_account.id,
+      organization_id: bank_account.organization_id,
       currency_id: bank_account.currency_id,
       movement_type: movement_type,
       transaction_date: ~D[2026-07-22],
@@ -915,6 +1599,7 @@ defmodule SipaexWeb.PageControllerTest do
     %ExchangeDifference{}
     |> ExchangeDifference.changeset(%{
       bank_account_id: bank_account.id,
+      organization_id: bank_account.organization_id,
       currency_id: bank_account.currency_id,
       transaction_date: ~D[2026-07-22],
       foreign_amount: Decimal.new("100"),
@@ -946,6 +1631,7 @@ defmodule SipaexWeb.PageControllerTest do
     %CapitalEntry{}
     |> CapitalEntry.changeset(%{
       beneficiary_id: beneficiary.id,
+      organization_id: beneficiary.organization_id,
       entry_date: ~D[2026-07-22],
       share_type: "ACCIONES COMUNES",
       share_value_usd: Decimal.new("10000"),
@@ -963,6 +1649,7 @@ defmodule SipaexWeb.PageControllerTest do
     %Entry{}
     |> Entry.changeset(%{
       beneficiary_id: beneficiary.id,
+      organization_id: beneficiary.organization_id,
       entry_date: ~D[2026-07-22],
       declaration_amount_usd: Decimal.new("1000"),
       total_share_capital_usd: Decimal.new("5000"),
@@ -1018,6 +1705,7 @@ defmodule SipaexWeb.PageControllerTest do
     %ExpenseEntry{}
     |> ExpenseEntry.changeset(%{
       provider_id: provider.id,
+      organization_id: provider.organization_id,
       currency_id: currency.id,
       category: provider.category,
       entry_date: ~D[2026-07-22],
@@ -1050,6 +1738,20 @@ defmodule SipaexWeb.PageControllerTest do
     |> Repo.insert!()
   end
 
+  defp seed_product(code, name, product_type \\ "raw_material") do
+    organization = Repo.one!(Organization)
+
+    %Product{}
+    |> Product.changeset(%{
+      organization_id: organization.id,
+      code: code,
+      name: name,
+      product_type: product_type,
+      unit: "unidad"
+    })
+    |> Repo.insert!()
+  end
+
   defp seed_commerce_entry(
          entry_type,
          party,
@@ -1064,6 +1766,7 @@ defmodule SipaexWeb.PageControllerTest do
     %CommerceEntry{}
     |> CommerceEntry.changeset(%{
       party_id: party.id,
+      organization_id: party.organization_id,
       currency_id: currency.id,
       vat_rate_id: vat_rate.id,
       entry_type: entry_type,
@@ -1086,6 +1789,7 @@ defmodule SipaexWeb.PageControllerTest do
     %FinancialEntry{}
     |> FinancialEntry.changeset(%{
       provider_id: provider.id,
+      organization_id: provider.organization_id,
       currency_id: currency.id,
       entry_date: ~D[2026-07-22],
       loan_amount_usd: Decimal.new("100"),

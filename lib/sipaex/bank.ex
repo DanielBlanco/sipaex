@@ -8,6 +8,7 @@ defmodule Sipaex.Bank do
 
   import Ecto.Query
 
+  alias Sipaex.Accounting
   alias Sipaex.Bank.PettyCashTransaction
   alias Sipaex.Common.Currencies
   alias Sipaex.Common.Currency
@@ -21,9 +22,9 @@ defmodule Sipaex.Bank do
   alias Sipaex.Repo
   alias Sipaex.Taxes
 
-  def summary do
-    currency_settings = Currencies.currency_settings()
-    organization = first_organization!()
+  def summary(organization \\ first_organization!()) do
+    organization = Repo.preload(organization, :base_currency)
+    currency_settings = Currencies.currency_settings(organization)
 
     ledger_rows = ledger_summary_rows(organization, currency_settings)
     rows = static_rows(ledger_rows)
@@ -43,28 +44,45 @@ defmodule Sipaex.Bank do
     }
   end
 
-  def create_petty_cash(attrs) do
-    organization = first_organization!()
-    currency = Repo.get!(Currency, attrs["currency_id"])
-    exchange_rate = exchange_rate_for(currency)
-    amount = decimal_from_param(attrs["amount"])
-    amount_usd = amount_to_usd(amount, currency, exchange_rate)
+  def create_petty_cash(attrs, organization \\ first_organization!()) do
+    with %Currency{} = currency <-
+           Currencies.currency_for_organization(attrs["currency_id"], organization),
+         :ok <- Accounting.ensure_writable_period(organization, Date.utc_today()) do
+      exchange_rate = exchange_rate_for(currency)
+      amount = decimal_from_param(attrs["amount"])
+      amount_usd = amount_to_usd(amount, currency, exchange_rate)
 
-    attrs =
-      attrs
-      |> Map.put("organization_id", organization.id)
-      |> Map.put("exchange_rate", exchange_rate)
-      |> Map.put("amount_usd", amount_usd)
+      attrs =
+        attrs
+        |> Map.put("organization_id", organization.id)
+        |> Map.put("exchange_rate", exchange_rate)
+        |> Map.put("amount_usd", amount_usd)
 
-    %PettyCashTransaction{}
-    |> PettyCashTransaction.changeset(attrs)
-    |> Repo.insert()
+      %PettyCashTransaction{}
+      |> PettyCashTransaction.changeset(attrs)
+      |> Repo.insert()
+    else
+      nil -> {:error, :invalid_currency}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  def delete_petty_cash(id) do
+  def delete_petty_cash(id, organization \\ first_organization!()) do
     PettyCashTransaction
-    |> Repo.get!(id)
-    |> Repo.delete()
+    |> where([transaction], transaction.id == ^id)
+    |> where([transaction], transaction.organization_id == ^organization.id)
+    |> Repo.one()
+    |> case do
+      nil ->
+        {:error, :invalid_petty_cash_transaction}
+
+      transaction ->
+        transaction_date = DateTime.to_date(transaction.inserted_at)
+
+        with :ok <- Accounting.ensure_writable_period(organization, transaction_date) do
+          Repo.delete(transaction)
+        end
+    end
   end
 
   def list_petty_cash(organization_id) do
@@ -107,14 +125,14 @@ defmodule Sipaex.Bank do
       |> reporting_amount(currency_settings)
 
     exchange_difference = sum_exchange_differences(organization, currency_settings)
-    expense_totals = Expenses.summary_totals()
-    tax_totals = Taxes.summary_totals()
+    expense_totals = Expenses.summary_totals(organization)
+    tax_totals = Taxes.summary_totals(organization)
 
     %{
       credit_notes: credit_notes,
       debit_notes: debit_notes,
       exchange_difference: exchange_difference,
-      dividend_payments: Dividends.summary_totals().payments,
+      dividend_payments: Dividends.summary_totals(organization).payments,
       administrative_expenses: expense_totals.administrative_payments,
       sales_expenses: expense_totals.sales_payments,
       financial_expenses: expense_totals.financial_expense_payments,

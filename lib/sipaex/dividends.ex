@@ -5,6 +5,7 @@ defmodule Sipaex.Dividends do
 
   import Ecto.Query
 
+  alias Sipaex.Accounting
   alias Sipaex.Common.Currencies
   alias Sipaex.Dividends.Beneficiary
   alias Sipaex.Dividends.CapitalEntry
@@ -13,9 +14,9 @@ defmodule Sipaex.Dividends do
   alias Sipaex.Organizations.Organization
   alias Sipaex.Repo
 
-  def settings do
-    organization = first_organization!()
-    currency_settings = Currencies.currency_settings()
+  def settings(organization \\ first_organization!()) do
+    organization = Repo.preload(organization, :base_currency)
+    currency_settings = Currencies.currency_settings(organization)
 
     shareholders =
       Beneficiary
@@ -58,65 +59,79 @@ defmodule Sipaex.Dividends do
     }
   end
 
-  def create_beneficiary(attrs) do
-    organization = first_organization!()
-
+  def create_beneficiary(attrs, organization \\ first_organization!()) do
     %Beneficiary{}
     |> Beneficiary.changeset(Map.put(attrs, "organization_id", organization.id))
     |> Repo.insert()
   end
 
-  def create_capital_entry(attrs) do
-    share_value = decimal_from_param(attrs["share_value_usd"])
-    quantity = integer_from_param(attrs["quantity"])
-    payment = decimal_from_param(attrs["payment_usd"] || "0")
-    capital = Decimal.mult(share_value, Decimal.new(quantity))
+  def create_capital_entry(attrs, organization \\ first_organization!()) do
+    with %Beneficiary{} <- get_beneficiary_for_organization(attrs["beneficiary_id"], organization),
+         entry_date = date_from_param(attrs["entry_date"]),
+         :ok <- Accounting.ensure_writable_period(organization, entry_date) do
+      share_value = decimal_from_param(attrs["share_value_usd"])
+      quantity = integer_from_param(attrs["quantity"])
+      payment = decimal_from_param(attrs["payment_usd"] || "0")
+      capital = Decimal.mult(share_value, Decimal.new(quantity))
 
-    attrs =
-      attrs
-      |> Map.put("quantity", quantity)
-      |> Map.put("capital_usd", capital)
-      |> Map.put("payment_usd", payment)
-      |> Map.put("receivable_usd", Decimal.sub(capital, payment))
+      attrs =
+        attrs
+        |> Map.put("organization_id", organization.id)
+        |> Map.put("quantity", quantity)
+        |> Map.put("capital_usd", capital)
+        |> Map.put("payment_usd", payment)
+        |> Map.put("receivable_usd", Decimal.sub(capital, payment))
 
-    %CapitalEntry{}
-    |> CapitalEntry.changeset(attrs)
-    |> Repo.insert()
+      %CapitalEntry{}
+      |> CapitalEntry.changeset(attrs)
+      |> Repo.insert()
+    else
+      nil -> {:error, :invalid_beneficiary}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  def create_entry(attrs) do
-    declaration_amount = decimal_from_param(attrs["declaration_amount_usd"])
-    payment = decimal_from_param(attrs["payment_usd"] || "0")
-    shareholder_id = attrs["beneficiary_id"]
-    settings = settings()
-    shareholder_capital = shareholder_capital(settings.capital_rows, shareholder_id)
-    total_share_capital = settings.capital_totals.capital
+  def create_entry(attrs, organization \\ first_organization!()) do
+    with %Beneficiary{} <- get_beneficiary_for_organization(attrs["beneficiary_id"], organization),
+         entry_date = date_from_param(attrs["entry_date"]),
+         :ok <- Accounting.ensure_writable_period(organization, entry_date) do
+      declaration_amount = decimal_from_param(attrs["declaration_amount_usd"])
+      payment = decimal_from_param(attrs["payment_usd"] || "0")
+      shareholder_id = attrs["beneficiary_id"]
+      settings = settings(organization)
+      shareholder_capital = shareholder_capital(settings.capital_rows, shareholder_id)
+      total_share_capital = settings.capital_totals.capital
 
-    participation_percent =
-      if Decimal.compare(total_share_capital, Decimal.new("0")) == :eq do
-        Decimal.new("0")
-      else
-        Decimal.div(shareholder_capital, total_share_capital)
-      end
+      participation_percent =
+        if Decimal.compare(total_share_capital, Decimal.new("0")) == :eq do
+          Decimal.new("0")
+        else
+          Decimal.div(shareholder_capital, total_share_capital)
+        end
 
-    shareholder_dividend = Decimal.mult(declaration_amount, participation_percent)
+      shareholder_dividend = Decimal.mult(declaration_amount, participation_percent)
 
-    attrs =
-      attrs
-      |> Map.put("total_share_capital_usd", total_share_capital)
-      |> Map.put("shareholder_capital_usd", shareholder_capital)
-      |> Map.put("participation_percent", participation_percent)
-      |> Map.put("shareholder_dividend_usd", shareholder_dividend)
-      |> Map.put("payment_usd", payment)
-      |> Map.put("payable_usd", Decimal.sub(shareholder_dividend, payment))
+      attrs =
+        attrs
+        |> Map.put("organization_id", organization.id)
+        |> Map.put("total_share_capital_usd", total_share_capital)
+        |> Map.put("shareholder_capital_usd", shareholder_capital)
+        |> Map.put("participation_percent", participation_percent)
+        |> Map.put("shareholder_dividend_usd", shareholder_dividend)
+        |> Map.put("payment_usd", payment)
+        |> Map.put("payable_usd", Decimal.sub(shareholder_dividend, payment))
 
-    %Entry{}
-    |> Entry.changeset(attrs)
-    |> Repo.insert()
+      %Entry{}
+      |> Entry.changeset(attrs)
+      |> Repo.insert()
+    else
+      nil -> {:error, :invalid_beneficiary}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  def summary_totals do
-    settings().totals
+  def summary_totals(organization \\ first_organization!()) do
+    settings(organization).totals
   end
 
   def display_amount(amount, settings) do
@@ -208,6 +223,13 @@ defmodule Sipaex.Dividends do
     |> Repo.one!()
   end
 
+  defp get_beneficiary_for_organization(id, organization) do
+    Beneficiary
+    |> where([beneficiary], beneficiary.id == ^id)
+    |> where([beneficiary], beneficiary.organization_id == ^organization.id)
+    |> Repo.one()
+  end
+
   defp decimal_from_param(%Decimal{} = value), do: value
   defp decimal_from_param(nil), do: Decimal.new("0")
   defp decimal_from_param(value) when is_integer(value), do: Decimal.new(value)
@@ -215,4 +237,7 @@ defmodule Sipaex.Dividends do
 
   defp integer_from_param(value) when is_integer(value), do: value
   defp integer_from_param(value) when is_binary(value), do: String.to_integer(value)
+
+  defp date_from_param(%Date{} = value), do: value
+  defp date_from_param(value) when is_binary(value), do: Date.from_iso8601!(value)
 end

@@ -21,6 +21,7 @@ defmodule Sipaex.Expenses.FinancialEntry do
     field :concept, :string
 
     belongs_to :provider, Sipaex.Expenses.Provider
+    belongs_to :organization, Sipaex.Organizations.Organization
     belongs_to :currency, Sipaex.Common.Currency
 
     timestamps(type: :utc_datetime)
@@ -30,6 +31,7 @@ defmodule Sipaex.Expenses.FinancialEntry do
     entry
     |> cast(attrs, [
       :provider_id,
+      :organization_id,
       :currency_id,
       :entry_date,
       :loan_amount_usd,
@@ -47,6 +49,7 @@ defmodule Sipaex.Expenses.FinancialEntry do
     ])
     |> validate_required([
       :provider_id,
+      :organization_id,
       :currency_id,
       :entry_date,
       :loan_amount_usd,

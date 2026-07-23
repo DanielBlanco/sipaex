@@ -18,10 +18,12 @@ defmodule SipaexWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    post "/login", PageController, :login
     get "/dashboard", PageController, :dashboard
     get "/bank", PageController, :bank
     get "/purchases", PageController, :purchases
     post "/purchases/parties", PageController, :create_purchase_party
+    post "/purchases/products", PageController, :create_product
     post "/purchases/entries", PageController, :create_purchase_entry
     get "/sales", PageController, :sales
     post "/sales/parties", PageController, :create_sale_party

@@ -23,6 +23,9 @@
             class="dropdown-content z-[70] mt-2 w-80 rounded-box border border-base-300 bg-base-100 p-4 text-sm leading-6 text-base-content/70 shadow-xl"
           >
             Registre documentos con monto exento, monto gravado e IVA. Estos datos alimentan la declaración IVA.
+            <span :if={@settings.entry_type == "purchase"}>
+              En compras, cada documento funciona como una factura de proveedor con varias líneas.
+            </span>
           </div>
         </div>
       </div>
@@ -37,6 +40,17 @@
           data-modal-target="commerce_party_modal"
         >
           <.icon name="hero-user-plus" class="size-5" />
+        </button>
+        <button
+          :if={@settings.entry_type == "purchase"}
+          id="purchase-add-product-button"
+          type="button"
+          class="btn btn-primary btn-sm btn-square tooltip tooltip-left"
+          data-tip="Agregar producto"
+          aria-label="Agregar producto"
+          data-modal-target="commerce_product_modal"
+        >
+          <.icon name="hero-cube" class="size-5" />
         </button>
         <button
           id={"#{@settings.entry_type}-add-entry-button"}
@@ -85,6 +99,16 @@
           {Sipaex.Commerce.party_label(@settings.entry_type)}s
         </button>
         <button
+          :if={@settings.entry_type == "purchase"}
+          id="purchase-products-tab"
+          type="button"
+          role="tab"
+          class={["tab", @active_commerce_tab == "products" && "tab-active"]}
+          data-commerce-tab="products"
+        >
+          Productos
+        </button>
+        <button
           id={"#{@settings.entry_type}-entries-tab"}
           type="button"
           role="tab"
@@ -126,6 +150,54 @@
                 {Sipaex.Commerce.display_amount(@settings.totals.total, @settings)}
               </p>
             </div>
+          </div>
+        </div>
+
+        <div
+          :if={@settings.entry_type == "purchase"}
+          id="purchase-products-panel"
+          data-commerce-panel="products"
+          hidden={@active_commerce_tab != "products"}
+        >
+          <div class="overflow-x-auto">
+            <table id="purchase-products-table" class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Producto</th>
+                  <th>Tipo</th>
+                  <th>Unidad</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={product <- @settings.products}>
+                  <td class="font-mono text-xs font-bold">{product.code}</td>
+                  <td>
+                    <div class="font-medium">{product.name}</div>
+                    <div :if={product.description} class="text-xs text-base-content/55">
+                      {product.description}
+                    </div>
+                  </td>
+                  <td>{Sipaex.Inventory.display_type(product.product_type)}</td>
+                  <td>{product.unit}</td>
+                  <td>
+                    <span class={[
+                      "badge badge-sm",
+                      product.active && "badge-success",
+                      !product.active && "badge-ghost"
+                    ]}>
+                      {if product.active, do: "Activo", else: "Inactivo"}
+                    </span>
+                  </td>
+                </tr>
+                <tr class="hidden only:table-row">
+                  <td colspan="5" class="py-6 text-center text-base-content/55">
+                    No hay productos.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -173,6 +245,7 @@
                   <th>Fecha</th>
                   <th>Documento</th>
                   <th>{Sipaex.Commerce.party_label(@settings.entry_type)}</th>
+                  <th :if={@settings.entry_type == "purchase"} class="text-right">Líneas</th>
                   <th class="text-right">Gravado</th>
                   <th class="text-right">IVA</th>
                   <th class="text-right">Total</th>
@@ -184,6 +257,9 @@
                   <td>{entry.entry_date}</td>
                   <td>{entry.document_number}</td>
                   <td>{entry.party.name}</td>
+                  <td :if={@settings.entry_type == "purchase"} class="text-right">
+                    {Sipaex.Commerce.line_count(entry)}
+                  </td>
                   <td class="text-right">
                     {Sipaex.Commerce.display_native_amount(entry.taxable_amount_usd, entry)}
                   </td>
@@ -198,7 +274,10 @@
                   </td>
                 </tr>
                 <tr class="hidden only:table-row">
-                  <td colspan="7" class="py-6 text-center text-base-content/55">
+                  <td
+                    colspan={if(@settings.entry_type == "purchase", do: "8", else: "7")}
+                    class="py-6 text-center text-base-content/55"
+                  >
                     No hay documentos.
                   </td>
                 </tr>
@@ -241,7 +320,51 @@
       </.form>
     </.modal>
 
-    <.modal id="commerce_entry_modal" title="Registrar documento">
+    <.modal id="commerce_product_modal" title="Agregar producto">
+      <.form
+        for={@product_form}
+        id="purchase-product-form"
+        action={~p"/purchases/products"}
+        method="post"
+        class="grid gap-4 sm:grid-cols-2"
+      >
+        <.input field={@product_form[:code]} label="Código" required />
+        <.input field={@product_form[:name]} label="Nombre" required />
+        <.input
+          field={@product_form[:product_type]}
+          type="select"
+          label="Tipo"
+          options={Sipaex.Inventory.product_types()}
+        />
+        <.input field={@product_form[:unit]} label="Unidad" required />
+        <div class="sm:col-span-2">
+          <.input
+            field={@product_form[:description]}
+            type="textarea"
+            label="Descripción"
+            rows="2"
+          />
+        </div>
+        <div class="sm:col-span-2 flex justify-end">
+          <button id="purchase-product-submit" type="submit" class="btn btn-primary">
+            Guardar
+          </button>
+        </div>
+      </.form>
+    </.modal>
+
+    <.modal
+      id="commerce_entry_modal"
+      box_class={
+        if(@settings.entry_type == "purchase", do: "w-11/12 max-w-5xl", else: "max-w-2xl")
+      }
+      title={
+        if(@settings.entry_type == "purchase",
+          do: "Registrar factura de compra",
+          else: "Registrar documento"
+        )
+      }
+    >
       <.form
         for={@entry_form}
         id={"#{@settings.entry_type}-entry-form"}
@@ -254,54 +377,288 @@
         method="post"
         class="grid gap-4 sm:grid-cols-2"
       >
-        <.input
-          field={@entry_form[:party_id]}
-          type="select"
-          label={Sipaex.Commerce.party_label(@settings.entry_type)}
-          options={Enum.map(@settings.parties, &{&1.name, &1.id})}
-        />
-        <.input
-          field={@entry_form[:currency_id]}
-          type="select"
-          label="Moneda"
-          options={Enum.map(@settings.currencies, &{"#{&1.code} - #{&1.name}", &1.id})}
-        />
-        <.input
-          field={@entry_form[:vat_rate_id]}
-          type="select"
-          label="IVA"
-          options={
-            Enum.map(
-              @settings.vat_rates,
-              &{"#{Sipaex.Taxes.display_rate(&1.rate)} - #{&1.description}", &1.id}
-            )
-          }
-        />
-        <.input field={@entry_form[:entry_date]} type="date" label="Fecha" required />
-        <.input field={@entry_form[:document_number]} label="N° documento" />
-        <.input
-          field={@entry_form[:exempt_amount]}
-          type="number"
-          label="Monto exento"
-          min="0"
-          step="0.01"
-        />
-        <.input
-          field={@entry_form[:taxable_amount]}
-          type="number"
-          label="Monto gravado"
-          min="0"
-          step="0.01"
-          required
-        />
-        <.input field={@entry_form[:payment]} type="number" label="Abono" min="0" step="0.01" />
-        <.input
-          field={@entry_form[:exchange_rate]}
-          type="number"
-          label="Tipo de cambio"
-          min="0.00000001"
-          step="0.00000001"
-        />
+        <input type="hidden" name="commerce_entry[payment]" value="0" />
+        <div class="sm:col-span-2 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(13rem,0.8fr)_minmax(11rem,0.65fr)]">
+          <.input
+            field={@entry_form[:party_id]}
+            type="select"
+            label={Sipaex.Commerce.party_label(@settings.entry_type)}
+            options={Enum.map(@settings.parties, &{&1.name, &1.id})}
+          />
+          <div class="fieldset mb-2">
+            <label>
+              <span class="label mb-1">Moneda</span>
+              <select
+                id="commerce_entry_currency_id"
+                name={@entry_form[:currency_id].name}
+                class="w-full select"
+                required
+              >
+                <option
+                  :for={currency <- @settings.currencies}
+                  value={currency.id}
+                  selected={@entry_form[:currency_id].value == currency.id}
+                  data-exchange-rate={
+                    currency
+                    |> Sipaex.Commerce.default_exchange_rate_for_currency()
+                    |> then(&if(&1, do: Decimal.to_string(&1, :normal), else: ""))
+                  }
+                  data-currency-symbol={currency.symbol}
+                >
+                  {currency.code} - {currency.name}
+                </option>
+              </select>
+            </label>
+          </div>
+          <.input
+            field={@entry_form[:exchange_rate]}
+            type="number"
+            label="Tipo de cambio"
+            min="0.00000001"
+            step="0.00000001"
+          />
+        </div>
+        <%= if @settings.entry_type == "purchase" do %>
+          <input
+            type="hidden"
+            name="commerce_entry[vat_rate_id]"
+            value={@entry_form[:vat_rate_id].value}
+          />
+        <% else %>
+          <.input
+            field={@entry_form[:vat_rate_id]}
+            type="select"
+            label="IVA"
+            options={
+              Enum.map(
+                @settings.vat_rates,
+                &{Sipaex.Taxes.display_rate(&1.rate), &1.id}
+              )
+            }
+          />
+        <% end %>
+        <div class="sm:col-span-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(11rem,0.45fr)]">
+          <.input field={@entry_form[:document_number]} label="N° documento" />
+          <.input field={@entry_form[:entry_date]} type="date" label="Fecha" required />
+        </div>
+        <%= if @settings.entry_type == "purchase" do %>
+          <input type="hidden" name="commerce_entry[exempt_amount]" value="0" />
+          <input type="hidden" name="commerce_entry[taxable_amount]" value="0" />
+          <div class="sm:col-span-2">
+            <div class="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <h3 class="text-sm font-bold">Detalle de factura</h3>
+                <p class="text-xs text-base-content/55">
+                  Agregue cada bien o servicio comprado. El IVA se calcula por línea.
+                </p>
+              </div>
+              <button
+                id="purchase-add-line-button"
+                type="button"
+                class="btn btn-primary btn-sm"
+                data-commerce-add-line
+              >
+                <.icon name="hero-plus" class="size-4" /> Línea
+              </button>
+            </div>
+            <div class="overflow-x-auto rounded-box border border-base-300">
+              <table id="purchase-receipt-lines-table" class="table table-sm">
+                <thead>
+                  <tr>
+                    <th class="w-56">Producto</th>
+                    <th class="w-20 text-right">Cant.</th>
+                    <th class="w-32 text-right">Precio</th>
+                    <th class="w-24">IVA</th>
+                    <th class="w-32 text-right">Sub-total</th>
+                    <th class="w-24 text-right"></th>
+                  </tr>
+                </thead>
+                <tbody data-commerce-lines>
+                  <tr data-commerce-line>
+                    <td>
+                      <div class="relative w-64" data-product-picker>
+                        <input
+                          id="purchase_line_0_product_id"
+                          name="commerce_entry[lines][0][product_id]"
+                          type="hidden"
+                          required
+                          data-product-id-input
+                        />
+                        <input
+                          id="purchase_line_0_product_search"
+                          type="search"
+                          class="input input-sm w-full"
+                          placeholder="Buscar producto..."
+                          autocomplete="off"
+                          data-product-search
+                        />
+                        <div
+                          class="absolute left-0 right-0 top-full z-[80] mt-1 hidden max-h-60 overflow-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-xl"
+                          data-product-results
+                        >
+                          <button
+                            :for={product <- @settings.document_products}
+                            type="button"
+                            class="block w-full rounded-field px-3 py-2 text-left text-sm hover:bg-base-200"
+                            data-product-option
+                            data-product-id={product.id}
+                            data-product-label={"#{product.code} - #{product.name}"}
+                            data-product-search-text={"#{product.code} #{product.name} #{product.description}"}
+                          >
+                            <span class="block font-semibold">
+                              {product.code} - {product.name}
+                            </span>
+                            <span class="block text-xs text-base-content/55">
+                              {Sipaex.Inventory.display_type(product.product_type)}
+                            </span>
+                          </button>
+                          <div
+                            class="hidden px-3 py-2 text-sm text-base-content/55"
+                            data-product-empty
+                          >
+                            Sin resultados
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <input
+                        id="purchase_line_0_quantity"
+                        name="commerce_entry[lines][0][quantity]"
+                        type="number"
+                        class="input input-sm w-20 text-right"
+                        min="0.000001"
+                        step="0.000001"
+                        value="1"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="purchase_line_0_unit_price"
+                        name="commerce_entry[lines][0][unit_price]"
+                        type="number"
+                        class="input input-sm w-32 text-right"
+                        min="0"
+                        step="0.01"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <select
+                        id="purchase_line_0_vat_rate_id"
+                        name="commerce_entry[lines][0][vat_rate_id]"
+                        class="select select-sm w-24"
+                        required
+                      >
+                        <option
+                          :for={rate <- @settings.vat_rates}
+                          value={rate.id}
+                          data-rate={Decimal.to_string(rate.rate, :normal)}
+                        >
+                          {Sipaex.Taxes.display_rate(rate.rate)}
+                        </option>
+                      </select>
+                    </td>
+                    <td class="text-right font-semibold tabular-nums" data-commerce-line-subtotal>
+                      0.00
+                    </td>
+                    <td class="text-right">
+                      <div class="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          class="btn btn-ghost btn-xs btn-square tooltip tooltip-left"
+                          data-tip="Detalle"
+                          data-commerce-toggle-note
+                          aria-label="Agregar detalle"
+                        >
+                          <.icon name="hero-document-text" class="size-4" />
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-ghost btn-xs btn-square tooltip tooltip-left"
+                          data-tip="Quitar línea"
+                          data-commerce-remove-line
+                          aria-label="Quitar línea"
+                          disabled
+                        >
+                          <.icon name="hero-trash" class="size-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr class="hidden" data-commerce-note-row>
+                    <td colspan="6" class="bg-base-200/50 px-3 py-2">
+                      <input
+                        id="purchase_line_0_description"
+                        name="commerce_entry[lines][0][description]"
+                        class="input input-sm w-full"
+                        placeholder="Detalle opcional de esta línea"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td
+                      colspan="4"
+                      class="text-right text-xs font-bold uppercase text-base-content/55"
+                    >
+                      Sub-total
+                    </td>
+                    <td class="text-right font-bold tabular-nums" data-commerce-receipt-subtotal>
+                      0.00
+                    </td>
+                    <td></td>
+                  </tr>
+                  <tr>
+                    <td
+                      colspan="4"
+                      class="text-right text-xs font-bold uppercase text-base-content/55"
+                    >
+                      IVA
+                    </td>
+                    <td class="text-right font-bold tabular-nums" data-commerce-receipt-vat>
+                      0.00
+                    </td>
+                    <td></td>
+                  </tr>
+                  <tr>
+                    <td
+                      colspan="4"
+                      class="text-right text-xs font-bold uppercase text-base-content/55"
+                    >
+                      Total
+                    </td>
+                    <td
+                      class="text-right text-base font-black tabular-nums"
+                      data-commerce-receipt-total
+                    >
+                      0.00
+                    </td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        <% else %>
+          <.input
+            field={@entry_form[:exempt_amount]}
+            type="number"
+            label="Monto exento"
+            min="0"
+            step="0.01"
+          />
+          <.input
+            field={@entry_form[:taxable_amount]}
+            type="number"
+            label="Monto gravado"
+            min="0"
+            step="0.01"
+            required
+          />
+        <% end %>
         <div class="sm:col-span-2">
           <.input field={@entry_form[:concept]} label="Detalle" required />
         </div>

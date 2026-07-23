@@ -8,6 +8,7 @@ defmodule Sipaex.Ledger do
 
   import Ecto.Query
 
+  alias Sipaex.Accounting
   alias Sipaex.Common.Currencies
   alias Sipaex.Common.Currency
   alias Sipaex.Common.ExchangeRate
@@ -19,9 +20,9 @@ defmodule Sipaex.Ledger do
 
   @incoming_types ~w(deposit_or_transfer_received credit_note)
 
-  def ledger_settings do
-    currency_settings = Currencies.currency_settings()
-    organization = first_organization!()
+  def ledger_settings(organization \\ first_organization!()) do
+    currency_settings = Currencies.currency_settings(organization)
+    organization = Repo.preload(organization, :base_currency)
 
     bank_accounts =
       BankAccount
@@ -76,57 +77,67 @@ defmodule Sipaex.Ledger do
     }
   end
 
-  def create_bank_account(attrs) do
-    organization = first_organization!()
-
-    %BankAccount{}
-    |> BankAccount.changeset(Map.put(attrs, "organization_id", organization.id))
-    |> Repo.insert()
+  def create_bank_account(attrs, organization \\ first_organization!()) do
+    with %Currency{} <- Currencies.currency_for_organization(attrs["currency_id"], organization) do
+      %BankAccount{}
+      |> BankAccount.changeset(Map.put(attrs, "organization_id", organization.id))
+      |> Repo.insert()
+    else
+      nil -> {:error, :invalid_currency}
+    end
   end
 
-  def create_transaction(attrs) do
-    bank_account =
-      BankAccount
-      |> preload(:currency)
-      |> Repo.get!(attrs["bank_account_id"])
+  def create_transaction(attrs, organization \\ first_organization!()) do
+    with %BankAccount{} = bank_account <-
+           get_bank_account_for_organization(attrs["bank_account_id"], organization),
+         transaction_date = date_from_param(attrs["transaction_date"]),
+         :ok <- Accounting.ensure_writable_period(organization, transaction_date) do
+      currency = bank_account.currency
+      exchange_rate = exchange_rate_for(currency, attrs["exchange_rate"])
+      amount = decimal_from_param(attrs["amount"])
+      amount_usd = amount_to_usd(amount, currency, exchange_rate)
 
-    currency = bank_account.currency
-    exchange_rate = exchange_rate_for(currency, attrs["exchange_rate"])
-    amount = decimal_from_param(attrs["amount"])
-    amount_usd = amount_to_usd(amount, currency, exchange_rate)
+      attrs =
+        attrs
+        |> Map.put("organization_id", organization.id)
+        |> Map.put("currency_id", currency.id)
+        |> Map.put("exchange_rate", exchange_rate)
+        |> Map.put("amount_usd", amount_usd)
 
-    attrs =
-      attrs
-      |> Map.put("currency_id", currency.id)
-      |> Map.put("exchange_rate", exchange_rate)
-      |> Map.put("amount_usd", amount_usd)
-
-    %Transaction{}
-    |> Transaction.changeset(attrs)
-    |> Repo.insert()
+      %Transaction{}
+      |> Transaction.changeset(attrs)
+      |> Repo.insert()
+    else
+      nil -> {:error, :invalid_bank_account}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  def create_exchange_difference(attrs) do
-    bank_account =
-      BankAccount
-      |> preload(:currency)
-      |> Repo.get!(attrs["bank_account_id"])
+  def create_exchange_difference(attrs, organization \\ first_organization!()) do
+    with %BankAccount{} = bank_account <-
+           get_bank_account_for_organization(attrs["bank_account_id"], organization),
+         transaction_date = date_from_param(attrs["transaction_date"]),
+         :ok <- Accounting.ensure_writable_period(organization, transaction_date) do
+      foreign_amount = decimal_from_param(attrs["foreign_amount"])
+      purchase_exchange_rate = decimal_from_param(attrs["purchase_exchange_rate"])
+      sale_exchange_rate = decimal_from_param(attrs["sale_exchange_rate"])
 
-    foreign_amount = decimal_from_param(attrs["foreign_amount"])
-    purchase_exchange_rate = decimal_from_param(attrs["purchase_exchange_rate"])
-    sale_exchange_rate = decimal_from_param(attrs["sale_exchange_rate"])
+      attrs =
+        attrs
+        |> Map.put("organization_id", organization.id)
+        |> Map.put("currency_id", bank_account.currency_id)
+        |> Map.put(
+          "result_amount",
+          exchange_difference_result(foreign_amount, purchase_exchange_rate, sale_exchange_rate)
+        )
 
-    attrs =
-      attrs
-      |> Map.put("currency_id", bank_account.currency_id)
-      |> Map.put(
-        "result_amount",
-        exchange_difference_result(foreign_amount, purchase_exchange_rate, sale_exchange_rate)
-      )
-
-    %ExchangeDifference{}
-    |> ExchangeDifference.changeset(attrs)
-    |> Repo.insert()
+      %ExchangeDifference{}
+      |> ExchangeDifference.changeset(attrs)
+      |> Repo.insert()
+    else
+      nil -> {:error, :invalid_bank_account}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   def movement_type_options do
@@ -227,6 +238,14 @@ defmodule Sipaex.Ledger do
     end)
   end
 
+  defp get_bank_account_for_organization(id, organization) do
+    BankAccount
+    |> where([bank_account], bank_account.id == ^id)
+    |> where([bank_account], bank_account.organization_id == ^organization.id)
+    |> preload(:currency)
+    |> Repo.one()
+  end
+
   defp bank_account_native_balances(bank_accounts) do
     Map.new(bank_accounts, fn bank_account ->
       balance =
@@ -311,4 +330,7 @@ defmodule Sipaex.Ledger do
   defp decimal_from_param(%Decimal{} = value), do: value
   defp decimal_from_param(value) when is_integer(value), do: Decimal.new(value)
   defp decimal_from_param(value) when is_binary(value), do: Decimal.new(value)
+
+  defp date_from_param(%Date{} = value), do: value
+  defp date_from_param(value) when is_binary(value), do: Date.from_iso8601!(value)
 end
